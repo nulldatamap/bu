@@ -1,0 +1,176 @@
+start     -> s_program $
+s_program -> program s_program
+s_program -> ε
+program   -> tydef
+program   -> def
+program   -> fun
+tydef     -> 'type' IDENT '=' ty
+fun       -> 'fn' IDENT '(' o_itseq ')' ty block
+o_itseq   -> itseq
+o_itseq   -> ε
+itseq     -> IDENT ty s_itpair
+s_itpair  -> itapir s_itpair
+s_itpair  -> ε
+itpair    -> ',' IDENT ty
+ty        -> s_aster IDENT
+s_aster   -> '*' s_aster
+s_aster   -> ε
+block     -> '{' s_stmt '}'
+s_stmt    -> stmt s_stmt
+s_stmt    -> ε
+stmt      -> if
+stmt      -> def
+stmt      -> ret
+stmt      -> expr
+if        -> 'if' ifbody
+ifbody    -> expr block o_elif o_else
+o_elif    -> elif
+o_elif    -> ε
+o_else    -> else
+o_else    -> ε
+elif      -> 'elif' ifbody
+else      -> 'else' block
+def       -> 'let' IDENT ty '=' expr
+ret       -> 'return' expr
+expr      -> o_unop binterm o_semi
+o_semi    -> ';'
+o_semi    -> ε
+o_unop    -> unop
+o_unop    -> ε
+unop      -> '-'
+unop      -> '*'
+unop      -> '&'
+unop      -> '!'
+unop      -> '~'
+binterm   -> aterm s_btpair
+s_btpair  -> binop aterm s_btpair
+s_btpair  -> ε
+binop     -> '+'
+binop     -> '-'
+binop     -> '*'
+binop     -> '/'
+binop     -> '%'
+binop     -> '&&'
+binop     -> '||'
+binop     -> '&'
+binop     -> '|'
+binop     -> '^'
+binop     -> '=='
+binop     -> '!='
+binop     -> '<'
+binop     -> '>'
+binop     -> '<='
+binop     -> '>='
+aterm     -> term s_aop
+s_aop     -> '.' IDENT s_aop
+s_aop     -> '(' o_exprseq ')' s_aop
+s_aop     -> ε
+o_exprseq -> exprseq
+o_exprseq -> ε
+exprseq   -> expr s_comexpr
+s_comexpr -> ',' expr s_comexpr
+s_comexpr -> ε
+term      -> '(' expr ')'
+term      -> lit
+term      -> IDENT
+lit       -> STRING
+lit       -> CHAR
+lit       -> NUMBER
+
+
+1 IDENT   -> <A> s_AD
+2 STRING  -> '"' s_SC '"'
+3 CHAR    -> "'" s_CC '"'
+4 NUMBER  -> INT o_doti
+
+Don't push kind:
+
+5  s_AD    -> AD s_AD
+6  s_AD    -> ε
+7  AD      -> A
+8  AD      -> D
+9  s_SC    -> SC s_SC
+10 s_SC    -> ε
+11 SC      -> EC
+12 SC      -> <S>
+13 s_CC    -> CC
+14 s_CC    -> ε
+15 CC      -> EC
+16 CC      -> <C>
+17 EC      -> '\\'
+18 EC      -> '\x' <X> <X>
+19 o_doti  -> '.' INT
+20 o_doti  -> ε
+21 INT     -> o_minus <D> s_D
+22 o_minus -> '-'
+23 o_minus -> ε
+24 s_D     -> <D> 
+25 s_D     -> ε
+
+
+IGNORE  -> s_W
+26 s_W     -> <W> s_W
+27 s_W     -> ε
+
+TODO: FIX ESCAPES AND WRITE THE DAMN TABEL
+
+        |<A>|<X>|<D>|<S>|<C>|<W>|'='|'('|')'|'*'|'{'|'}'|';'|'-'|'+'|'/'|'%'|'&'|'|'|'^'|'<'|'>'| ε | $
+IDENT   | 1 |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |    
+STRING  |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+CHAR    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+NUMBER  |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_AD    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_AD    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+AD      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+AD      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_SC    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_SC    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+SC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+SC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_CC    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_CC    |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+CC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+CC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+EC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+EC      |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+o_doti  |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+o_doti  |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+INT     |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+o_minus |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+o_minus |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_D     |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+s_D     |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |  
+IGNORE  |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+s_W     |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+s_W     |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
