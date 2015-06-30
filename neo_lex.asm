@@ -53,7 +53,6 @@ TK_DOT    equ '.'
 lex:
   blockstart
   sub rsp, SRC_BUFFER_SIZE + TOKEN_BUFFER_SIZE
-  callf print_int, rsp
                                        ; + 1 so we can check for over
   lea rax, [rsp + TOKEN_BUFFER_SIZE]
   callf stdin_read, rax, SRC_BUFFER_SIZE+1
@@ -98,7 +97,7 @@ lex:
   xor r9, r9
   mov r9b, [rax + rbx]
                                        ; Lookup the effect for this step
-  cmp r9, 24                           ; Check if we've reached the end state
+  cmp r9, FINISHED_STATE               ; Check if we've reached the end state
   je .done_lexing
 
   mov rax, rbx
@@ -107,19 +106,17 @@ lex:
   add rax, EFFECT_TABLE
   mov rax, [rax + r9 * 8]
   
-;  push r8
-;  push rbx
-;  push rax
-;
-;  callf print_err, DBG_000
-;  callf print_int, [rsp + 16]
-;  callf print_int, [rsp + 8]
-;  callf print_int, r9
-;  callf print_err, DBG_001
-;
-;  pop rax
-;  pop rbx
-;  pop r8
+; push r8
+; push rbx
+; push rax
+; callf print_err, DBG_000
+; callf print_int, [rsp + 16]
+; callf print_int, [rsp + 8]
+; callf print_int, r9
+; callf print_err, DBG_001
+; pop rax
+; pop rbx
+; pop r8
 
   cmp rax, 0  
   je .no_effect                        ; Check if it's a nop
@@ -149,14 +146,6 @@ lex:
   push r8
   push rbx
   push rax
-
-  lea rax, [rsp + 3 * 8 ]
-  callf print_int, rax
-
-  lea rax, [rsp + 3 * 8 ]
-  mov rbx, r15
-  sub rbx, rax
-  callf print_int, rbx
 
   lea rax, [rsp + 3 * 8 ]
   mov rbx, r15
@@ -259,13 +248,69 @@ err_expected_str_term:
   callf print_err, ERR_MSG_003
   ret
 
+%macro cmp_kw_else 2
+  mov rdx, [KW_ %+ %1]                 ; Read the length field
+  lea rcx, [KW_ %+ %1 + 8]             ; The string's location
+  call raw_str_cmp                     ; Compare the two strings
+  test rax, rax
+  jz %2
+  
+  mov byte [r15 - 1], TK_ %+ %1
+  mov r14, VALUE_BUFFER
+  ret
+%endmacro
+
 push_buffer:
-  dbg 9
+; dbg 9
+  mov al, [r15 - 1]                    ; Read the last written tag
+  cmp al, TK_IDENT                     ; If it's an ident token
+  jne .dont_keyword_check              ; Check if it maches a keyword
+
+  mov rdi, r14
+  sub rdi, VALUE_BUFFER                ; Get the buffer's length
+  mov rsi, VALUE_BUFFER                ; And it's location
+
+  cmp_kw_else FN, .try_type_kw
+
+.try_type_kw:
+  cmp_kw_else TYPE, .try_if_kw
+
+.try_if_kw:
+  cmp_kw_else IF, .try_elif_kw
+
+.try_elif_kw:
+  cmp_kw_else ELIF, .try_else_kw
+
+.try_else_kw:
+  cmp_kw_else ELSE, .try_let_kw
+
+.try_let_kw:
+  cmp_kw_else LET, .try_return_kw
+
+.try_return_kw:
+  cmp_kw_else RETURN, .dont_keyword_check
+
+.dont_keyword_check:
   mov rcx, r14
   sub rcx, VALUE_BUFFER
 
   mov [r15], rcx
   add r15, 8
+
+  mov rsi, VALUE_BUFFER
+  mov rdi, r15
+
+  rep movsb                            ; Copy the buffer over
+
+  mov r15, rdi                         ; Update the token buffer cursor
+  mov r14, VALUE_BUFFER                ; Reset the value buffer
+
+  ret
+
+push_raw_buffer:
+  dbg 9
+  mov rcx, r14
+  sub rcx, VALUE_BUFFER
 
   mov rsi, VALUE_BUFFER
   mov rdi, r15
@@ -386,7 +431,7 @@ into_dvbar:
   ret
 
 into_nequal:
-  dbg B
+  dbg 1B
   mov byte [r15 - 1], TK_NEQUAL
   ret
 

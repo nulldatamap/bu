@@ -4,6 +4,37 @@ FD_STDIN  equ 0
 FD_STDOUT equ 1
 FD_STDERR equ 2
 
+; raw_str_cmp ( alen int, aadr *u8, blen int, badr *u8 ) bool
+raw_str_cmp:
+  ; USED:
+  ;  rdi, rsi, rdx, rcx
+  push rbx
+
+  cmp rdi, rdx                         ; Compare the strings' lengths
+  jne .false
+
+  xor rbx, rbx                         ; Set the index to 0
+
+.cmp_loop:
+  mov al, [rcx + rbx]                  ; Loads B's char at the index
+  cmp byte [rsi + rbx], al             ; And compare it with A's char
+  jne .false                           ; Return fasle if they're not equal
+
+  inc rbx                              ; Otherwise get the next index
+  cmp rbx, rdi                         
+  jne .cmp_loop                        ; Loop again if there's more
+                                       ; If not:
+  mov rax, 1                           ; return true
+
+  pop rbx
+  ret
+
+.false:
+  xor rax, rax
+
+  pop rbx
+  ret
+
 ; print_err ( s str ) int
 print_err:
   mov rsi, [rdi]                       ; The length fields is at the origin
