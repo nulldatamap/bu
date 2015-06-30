@@ -6,34 +6,24 @@ FD_STDERR equ 2
 
 ; print_err ( s str ) int
 print_err:
-  blockstart
-  
   mov rsi, [rdi]                       ; The length fields is at the origin
   add rdi, 8                           ; The data is at origin + 8 bytes
   call stderr_write
-  
-  blockend
   ret
 
 ; read_str ( buf str, len int ) int
 read_str:
-  blockstart
-  
   mov r15, rdi
 
   add rdi, 8                           ; We read into the data field
   call stdin_read
 
   mov [r15], rax                       ; Write the string length
-
-  blockend
   ret
 
 ; print_int ( v int ) int
 print_int:
-  blockstart
-  alloc( 12 )
-  mov rsi, rbp                         ; String cursor
+  mov rsi, INT2STR_BUF + 20            ; String cursor
   mov rcx, 0                           ; Negative flag
   mov r8, 0                            ; String length
 
@@ -73,39 +63,52 @@ print_int:
 .skip_negative:
   inc rsi
 
-  call stdout_write, rsi, r8           ; Print the string
-
-  blockend
+  callf stderr_write, rsi, r8          ; Print the string
   ret
 
 ; stderr_write ( data *u8, len usize ) int
 stderr_write:
+  push r11
+
   mov rax, 1
   mov rdx, rsi
   mov rsi, rdi
   mov rdi, FD_STDERR
   syscall
+
+  pop r11
   ret
 
 ; stdout_write ( data *u8, len usize ) int
 stdout_write:
+  push r11
+
   mov rax, 1
   mov rdx, rsi
   mov rsi, rdi
   mov rdi, FD_STDOUT
   syscall
+
+  pop r11
   ret
 
 ; stdin_read ( dest *u8, len usize ) int
 stdin_read:
+  push r11
+
   mov rax, 0
   mov rdx, rsi
   mov rsi, rdi
   mov rdi, FD_STDIN
   syscall
+
+  pop r11
   ret
 
 ; exit ()
 exit:
   mov rax, 60
   syscall
+
+section .bss
+INT2STR_BUF resb 20

@@ -9,14 +9,16 @@
   pop rbp
 %endmacro
 
-%define alloc( c ) sub rsp, c
+%macro alloc 1
+  sub rsp, %1
+%endmacro
 
-%macro call 2
+%macro callf 2
   mov rdi, %2
   call %1
 %endmacro
 
-%macro call 3
+%macro callf 3
   mov rdi, %2
   mov rsi, %3
   call %1
