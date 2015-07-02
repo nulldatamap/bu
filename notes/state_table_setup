@@ -1,0 +1,26 @@
+00h R - Ready ( INVALID_CHAR )
+01h Yε- Symbol
+02h S - String ( EXPECTED_STRING_TERMINATOR )
+03h C - Char ( INVALID_NULL_CHAR, EXPECTED_CHAR_TERMINATOR )
+04h c - Char end ( EXPECTED_CHAR_TERMINATOR )
+05h Q - String escape
+06h Z - String hex escape
+07h z - String hex escape end
+08h W - Char escape
+09h X - Char hex escape 
+0Ah x - Char hex escape end
+0Bh Iε- Ident
+0Ch Nε- Number
+0Dh F - Float
+0Eh fε- Float end
+0Fh <ε- Less
+10h =ε- Equal
+11h >ε- Great
+12h &ε- Amp
+13h |ε- Vbar
+14h !ε- Bang
+15h iε- Ignore
+16h # - Comment
+17h 0 - Error 
+18h 1 - Error
+19h $ - End

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+cd src
 nasm -felf64 l0.asm -g
-ld l0.o -obin/l0
-rm l0.o
+cd ..
+ld src/l0.o -obin/l0
+	rm src/l0.o
+
