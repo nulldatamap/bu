@@ -1,35 +1,12 @@
+%include "state_table.asm"
+%include "effect_table.asm"
 
 section .text
 
 SRC_BUFFER_SIZE   equ 1024 * 10          ; 10KB
 TOKEN_BUFFER_SIZE equ 1024 * 10
 
-EOF equ -1
 
-STATE_READY            equ 0
-STATE_IDENT            equ 1
-STATE_NUMBER           equ 2
-STATE_STRING           equ 3
-STATE_CHAR             equ 4
-STATE_AMP              equ 5
-STATE_VBAR             equ 6
-STATE_LESS             equ 7
-STATE_GREAT            equ 8
-STATE_EQUAL            equ 9
-STATE_BANG             equ 10
-STATE_CHAR_END         equ 11
-STATE_CHAR_ESC         equ 12
-STATE_CHAR_ESC_HEX_1   equ 13
-STATE_CHAR_ESC_HEX_2   equ 14
-STATE_FLOAT            equ 15
-STATE_FLOAT_DEC        equ 16
-STATE_STRING_ESC       equ 17
-STATE_STRING_ESC_HEX_1 equ 18
-STATE_STRING_ESC_HEX_2 equ 19
-
-                                         ; End of stream token
-TK_EOS    equ 0
-                                         ; String tokens
 TK_IDENT  equ 1
 TK_INT    equ 2
 TK_FLOAT  equ 3
@@ -75,652 +52,444 @@ TK_DOT    equ '.'
 ; lex () int
 lex:
   blockstart
-  alloc( SRC_BUFFER_SIZE )         ; Size
-                                       ; + 1 so we can check for oversize
-  call stdin_read, rsp, SRC_BUFFER_SIZE+1
+  sub rsp, SRC_BUFFER_SIZE + TOKEN_BUFFER_SIZE
+                                       ; + 1 so we can check for over
+  lea rax, [rsp + TOKEN_BUFFER_SIZE]
+  callf stdin_read, rax, SRC_BUFFER_SIZE+1
 
   cmp rax, SRC_BUFFER_SIZE             ; Check for file size
   jg .err_source_code_too_big
 
 .end_loop:
-                                       ; ### Registers used:
-                                       ; rax: function results and logic
-                                       ; rbx: current character ( bl )
-                                       ; rcx: buffer view length
-                                       ; rdx: source buffer origin
-                                       ; r8 : source buffer length
-                                       ; r9 : pos count
-                                       ; r10: line count
-                                       ; r11: source buffer cursor
-                                       ; r12: buffer view origin
-                                       ; r13: token buffer length
-                                       ; r14: token buffer cursor
-                                       ; r15: current state
+                                       ; rax = TMP / EFFECT
+                                       ; rbx = STATE 
+                                       ; rcx = ------
+                                       ; rdx = ------
+                                       ; rsi = ------
+                                       ; rdi = ------
+                                       ; rbp = ------
+                                       ; rsp = ------
+                                       ; r8  = INPUT
+                                       ; r9  = NEW_STATE 
+                                       ; r10 = SOURCE_INDEX
+                                       ; r11 = SOURCE_END
+                                       ; r12 = LINE
+                                       ; r13 = POS
+                                       ; r14 = VALUE_BUFFER_INDEX
+                                       ; r15 = TOKEN_BUFFER_INDEX
+  lea r10, [rsp + TOKEN_BUFFER_SIZE]
+  lea r11, [r10 + rax]
 
-  mov r8 , rax                         ; Save the source buffer size
-  lea r11, [rsp - 1]                   ; Source cursor, - 1 due to next_char
-  mov rdx, rsp                         ; Store the soure code origin
-  mov r12, r11                         ; Set our buffer view on the start
-  xor rcx, rcx                         ; And the length of it to 0
-  mov r9 , 1                           ; Start at pos 1
-  mov r10, 1                           ; line 1
+  mov r12, 1
+  mov r13, 1
+  mov r14, VALUE_BUFFER
+  lea r15, [rsp]
 
-  test r8, r8
-  jz .end                              ; Stop early if the buffer is empty
+  mov rbx, INITIAL_STATE               ; 0 is the READY state
+
+.step:
+  call next_char
+                                       ; Lookup the next state
+  mov rax, r8
+  mov rdx, STATE_TABLE_WIDTH
+  mul rdx
+  add rax, STATE_TABLE
+  xor r9, r9
+  mov r9b, [rax + rbx]
+                                       ; Lookup the effect for this step
+  cmp r9, FINISHED_STATE               ; Check if we've reached the end state
+  je .done_lexing
+
+  mov rax, rbx
+  mov rdx, EFFECT_TABLE_WIDTH
+  mul rdx
+  add rax, EFFECT_TABLE
+  mov rax, [rax + r9 * 8]
   
-    blockstart                         ; Start a new scope
-    alloc( TOKEN_BUFFER_SIZE + 8 )     ; Allocate the token buffer
-    
-    xor r13, r13                       ; Set the token buffer's length to 0
-    mov r14, rsp                       ; Set the token buffers cursor to origin
-    mov qword [rbp], 0                 ; Set the buffer's current length to 0
+; push r8
+; push rbx
+; push rax
+; callf print_err, DBG_000
+; callf print_int, [rsp + 16]
+; callf print_int, [rsp + 8]
+; callf print_int, r9
+; callf print_err, DBG_001
+; pop rax
+; pop rbx
+; pop r8
+
+  cmp rax, 0  
+  je .no_effect                        ; Check if it's a nop
   
-    mov r15, STATE_READY               ; Set-up the state
-  
-  .step_state:
-    push rsi
-    push rdi
-    call print_err, DBG_000
-    pop rdi
-    pop rsi
+  call rax                             ; Call the effect
 
-    call next_char
-  
-  .hold_char:
-    jmp [LEXER_JUMP_TABLE + r15 * 8]   ; Jump to the given state branch
-  
-  .state_ready:
-    call is_ident_char
-    test rax, rax
-    jz .try_digit
-    
-    mov r15, STATE_IDENT
-    jmp .step_state
-    
-  .try_digit:
-    call is_digit_char
-    test rax, rax
-    jz .try_minus
+.no_effect:
+  cmp r9 , TERMINATING_STATES          ; Check if the lexer is done
+  jge .done_lexing                     ; If finished lexing
 
-    mov r15, STATE_NUMBER
-    jmp .step_state
+  mov rbx, r9                          ; Update the state
+  jmp .step                            ; And step again
 
-  .try_minus:
-    cmp bl, '-'
-    jne .try_dqoute
-  
-    mov r15, STATE_NUMBER
-    jmp .step_state
-  
-  .try_dqoute:
-    cmp bl, '"'
-    jne .try_sqoute
-    
-    dec rcx
-    inc r12                            ; Discard the first qoute
-
-    mov r15, STATE_STRING
-    jmp .step_state
-  
-  .try_sqoute:
-    cmp bl, "'"
-    jne .try_single_symbol
-  
-    mov r15, STATE_CHAR
-    jmp .step_state
-  
-  .try_single_symbol:
-    call is_single_symbol
-    test rax, rax
-    jz .try_amp
-    
-    mov rax, rbx
-    call push_token
-    mov r15, STATE_READY
-    jmp .step_state
-  
-  .try_amp:
-    cmp bl, '&'
-    jne .try_vbar
-  
-    mov r15, STATE_AMP
-    jmp .step_state
-  
-  .try_vbar:
-    cmp bl, '|'
-    jne .try_less
-  
-    mov r15, STATE_VBAR
-    jmp .step_state
-  
-  .try_less:
-    cmp bl, '<'
-    jne .try_great
-  
-    mov r15, STATE_LESS
-    jmp .step_state
-  
-  .try_great:
-    cmp bl, '>'
-    jne .try_equal
-  
-    mov r15, STATE_GREAT
-    jmp .step_state
-  
-  .try_equal:
-    cmp bl, '='
-    jne .try_bang
-  
-    mov r15, STATE_EQUAL
-    jmp .step_state
-  
-  .try_bang:
-    cmp bl, '!'
-    jne .try_whitespace
-  
-    mov r15, STATE_BANG
-    jmp .step_state
-  
-  .try_whitespace:
-    call is_whitespace_char
-    test rax, rax
-    jz .try_eof
-  
-    mov r15, STATE_READY
-    dec r13                              ; Decreate view size, and move it along
-    inc r14                              ; Discarding the char
-    jmp .step_state
-  
-  .try_eof:
-    cmp rbx, -1
-    jne .invalid_token
-    jmp .finish_lexing
-
-  .state_ident:
-    call is_ident_char
-    test rax, rax
-    jnz .step_state
-
-    call is_digit_char
-    test rax, rax
-    jnz .step_state
-
-    mov rax, TK_IDENT
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .hold_char
-
-  .state_number:
-    call is_digit_char
-    test rax, rax
-    jnz .step_state
-
-    cmp bl, '.'
-    jne .number_elipson
-
-    mov r15, STATE_FLOAT
-    jmp .step_state
-
-  .number_elipson:
-    mov rax, TK_INT
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .hold_char
-
-  .state_float:
-    call is_digit_char
-    test rax, rax
-    jz .invalid_float
-
-    mov r15, STATE_FLOAT_DEC
-    jmp .step_state
-
-  .state_float_dec:
-    call is_digit_char
-    test rax, rax
-    jnz .step_state
-
-    mov rax, TK_FLOAT
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .hold_char
-
-  .state_string:
-    call is_string_char
-    test rax, rax
-    jnz .step_state
-
-    cmp bl, '\'
-    jne .string_end
-
-    mov r15, STATE_STRING_ESC
-    jmp .step_state
-
-  .string_end:
-    cmp bl, '"'
-    jne .invalid_string
-
-    dec rcx                            ; Don't include the last qoute
-    mov rax, TK_STRING
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .state_string_esc:
-    cmp bl, '\'
-    jne .try_string_hex_esc
-
-    mov r15, STATE_STRING
-    jmp .step_state
-
-  .try_string_hex_esc:
-    cmp bl, 'x'
-    jne .try_string_qout_esc
-
-    mov r15, STATE_STRING_ESC_HEX_1
-    jmp .step_state
-
-  .try_string_qout_esc:
-    cmp bl, '"'
-    jne .invalid_string_escape
-
-    mov r15, STATE_STRING
-    jmp .step_state
-
-  .state_string_esc_hex_1:
-    call is_hex_char
-    test rax, rax
-    jne .invalid_hex_escape
-
-    mov r15, STATE_STRING_ESC_HEX_2
-    jmp .step_state
-
-  .state_string_esc_hex_2:
-    call is_hex_char
-    test rax, rax
-    jne .invalid_hex_escape
-
-    mov r15, STATE_STRING
-    jmp .step_state
-
-  .state_char:
-    call is_char_char
-    test rax, rax
-    jz .try_char_esc
-
-    mov r15, STATE_CHAR_END
-
-  .try_char_esc:
-    cmp bl, '\'
-    jne .invalid_char
-
-    mov r15, STATE_CHAR_ESC
-    jmp .step_state
-
-  .state_char_end:
-    cmp bl, "'"
-    jne .invalid_char
-
-    dec rcx                            ; Don't include the last qoute
-    mov rax, TK_CHAR
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .state_char_esc:
-    cmp bl, '\'
-    jne .try_char_hex_esc
-
-    mov r15, STATE_CHAR_END
-    jmp .step_state
-
-  .try_char_hex_esc:
-    cmp bl, 'x'
-    jne .try_char_qout_esc
-
-    mov r15, STATE_CHAR_ESC_HEX_1
-    jmp .step_state
-
-  .try_char_qout_esc:
-    cmp bl, "'"
-    jne .invalid_char_escape
-
-    mov r15, STATE_CHAR_END
-    jmp .step_state
-
-  .state_char_esc_hex_1:
-    call is_hex_char
-    test rax, rax
-    jne .invalid_hex_escape
-
-    mov r15, STATE_CHAR_ESC_HEX_2
-    jmp .step_state
-
-  .state_char_esc_hex_2:
-    call is_hex_char
-    test rax, rax
-    jne .invalid_hex_escape
-
-    mov r15, STATE_CHAR_END
-    jmp .step_state
-
-  .state_amp:
-    cmp bl, '&'
-    jne .dchar_elipson
-
-    mov rax, TK_DAMP
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .state_vbar:
-    cmp bl, '|'
-    jne .dchar_elipson
-
-    mov rax, TK_DVBAR
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .state_less:
-    cmp bl, '='
-    jne .dchar_elipson
-
-    mov rax, TK_LESSEQ
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .state_great:
-    cmp bl, '='
-    jne .dchar_elipson
-
-    mov rax, TK_GRETEQ
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-  
-  .state_equal:
-    cmp bl, '='
-    jne .dchar_elipson
-
-    mov rax, TK_DEQUAL
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-  
-  .state_bang:
-    cmp bl, '='
-    jne .dchar_elipson
-
-    mov rax, TK_NEQUAL
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .dchar_elipson:
-    mov rax, rbx
-    call push_token
-
-    mov r15, STATE_READY
-    jmp .step_state
-
-  .invalid_token:
-    call print_err, ERR_MSG_001
-
-  .invalid_float:
-    call print_err, ERR_MSG_002
-
-  .invalid_string:
-    call print_err, ERR_MSG_003
-
-  .invalid_string_escape:
-    call print_err, ERR_MSG_004
-
-  .invalid_hex_escape:
-    call print_err, ERR_MSG_005
-
-  .invalid_char:
-    call print_err, ERR_MSG_006
-
-  .invalid_char_escape:
-    call print_err, ERR_MSG_007
-
-  .finish_lexing:
-    ; TODO: Copy the token data into the source area
-    blockend
-
-.end:
-  push rsi
-  push rdi
-  call print_err, DBG_003
-  pop rdi
-  pop rsi
-    
+.err_source_code_too_big:
+  callf print_err, ERR_MSG_000
   blockend
   ret
 
-.err_source_code_too_big:
-  call print_err, ERR_MSG_000
+.done_lexing:
+  cmp r14, VALUE_BUFFER                ; If there's an unpushed value
+  je .dont_flush
+
+  call push_buffer                     ; Flush it
+
+.dont_flush:
+  
+  push r8
+  push rbx
+  push rax
+
+  lea rax, [rsp + 3 * 8 ]
+  mov rbx, r15
+  sub rbx, rax
+  callf stdout_write, rax, rbx
+
+  pop rax
+  pop rbx
+  pop r8
+
   blockend
+  mov rax, 0
   ret
 
 next_char:
-  inc r11                              ; Move source cursor ahead
+  mov r8, EOS
 
-  mov rax, r11
-  sub rax, rdx
-  cmp rax, r8
-  jge .read_char                       ; Make sure there's a char to read
+  cmp r10, r11
+  je .end                              ; Return early with EOS
 
-  mov rbx, EOF                         ; If there isn't, make the char EOF
+  xor r8 , r8
+  mov r8b, [r10]                       ; Load the character
+  inc r10
+
+  cmp r8, '\n'
+  jne .skip_newline                    ; Handle newlines
+
+  xor r13, r13                         ; Reset the position
+  inc r12                              ; Increment the line count
+
+.skip_newline:
+  inc r13                              ; Increment the position
+
+.end:
   ret
 
-.read_char:
-  mov bl, [r11]                        ; Read a character from the source
-  inc rcx                              ; Expend the buffer view to current char
+%macro push_kind 1
+  cmp r14, VALUE_BUFFER                ; If there's an unpushed 
+  je .skip_value_push
 
-  cmp bl, `\n`
-  jne .bump_pos
+  call push_buffer
 
-  inc r10                              ; Next line
-  mov r9, 1                            ; Reset pos count
+.skip_value_push:
+  mov byte [r15], %1
+  inc r15
+%endmacro
 
-.bump_pos:
-  inc r9
+%macro dbg 1
+  push r8
+  push rbx
+  push rax
+
+  callf print_err, DBG_F_%+ %1
+
+  pop rax
+  pop rbx
+  pop r8
+%endmacro
+
+push_string:
+  dbg 1
+  push_kind TK_STRING
   ret
 
-push_token:
-                                       ; Push the token id
-  mov [r14], al
-  inc r14                              ; Update the cursor and length
-  inc r13
+push_symbol:
+  dbg 2
+  push_kind r8b                        ; Push INPUT
+  ret
 
-  cmp al, TK_CHAR
-  jg .end
-                                       ; Push the string, clear the buffer view
-  mov [r14], rcx                       ; Push the string length
-  add r13, 8
+push_char:
+  dbg 3
+  push_kind TK_CHAR
+  ret
+
+push_collect_int:
+  dbg 4
+  push_kind TK_INT
+  call collect
+  ret
+
+push_collect_ident:
+  dbg 5
+  push_kind TK_IDENT
+  call collect
+  ret
+
+err_invalid_char:
+  dbg 6
+  callf print_err, ERR_MSG_001
+  ret
+
+collect:
+  dbg 7
+  mov [r14], r8b
+  inc r14
+  ret
+
+err_expected_str_term:
+  dbg 8
+  callf print_err, ERR_MSG_003
+  ret
+
+%macro cmp_kw_else 2
+  mov rdx, [KW_ %+ %1]                 ; Read the length field
+  lea rcx, [KW_ %+ %1 + 8]             ; The string's location
+  call raw_str_cmp                     ; Compare the two strings
+  test rax, rax
+  jz %2
   
-  mov rax, rcx                         ; Store the old buffer view length
-  
-  mov rsi, r12
+  mov byte [r15 - 1], TK_ %+ %1
+  mov r14, VALUE_BUFFER
+  ret
+%endmacro
+
+push_buffer:
+; dbg 9
+  mov al, [r15 - 1]                    ; Read the last written tag
+  cmp al, TK_IDENT                     ; If it's an ident token
+  jne .dont_keyword_check              ; Check if it maches a keyword
+
   mov rdi, r14
-  rep movsb                            ; Copy buffer view to token buffer
+  sub rdi, VALUE_BUFFER                ; Get the buffer's length
+  mov rsi, VALUE_BUFFER                ; And it's location
 
-  add r13, rax                         ; Update buffer length
-  mov r12, r11                         ; Move the buffer view along
+  cmp_kw_else FN, .try_type_kw
 
-.end:
-  ret  
+.try_type_kw:
+  cmp_kw_else TYPE, .try_if_kw
 
-is_ident_char:
-  mov rax, 1
+.try_if_kw:
+  cmp_kw_else IF, .try_elif_kw
 
-  cmp bl, 'A'
-  jl .not_upper
-  cmp bl, 'Z'
-  jg .not_upper
+.try_elif_kw:
+  cmp_kw_else ELIF, .try_else_kw
+
+.try_else_kw:
+  cmp_kw_else ELSE, .try_let_kw
+
+.try_let_kw:
+  cmp_kw_else LET, .try_return_kw
+
+.try_return_kw:
+  cmp_kw_else RETURN, .dont_keyword_check
+
+.dont_keyword_check:
+  mov rcx, r14
+  sub rcx, VALUE_BUFFER
+
+  mov [r15], rcx
+  add r15, 8
+
+  mov rsi, VALUE_BUFFER
+  mov rdi, r15
+
+  rep movsb                            ; Copy the buffer over
+
+  mov r15, rdi                         ; Update the token buffer cursor
+  mov r14, VALUE_BUFFER                ; Reset the value buffer
+
   ret
 
-.not_upper:
-  cmp bl, 'a'
-  jl .not_lower
-  cmp bl, 'z'
-  jg .not_lower
+push_raw_buffer:
+  dbg 9
+  mov rcx, r14
+  sub rcx, VALUE_BUFFER
+
+  mov rsi, VALUE_BUFFER
+  mov rdi, r15
+
+  rep movsb                            ; Copy the buffer over
+
+  mov r15, rdi                         ; Update the token buffer cursor
+  mov r14, VALUE_BUFFER                ; Reset the value buffer
+
   ret
 
-.not_lower:
-  cmp bl, '_'
-  jne .not_ident_char
+err_expected_chr_term:
+  dbg A
+  callf print_err, ERR_MSG_006
   ret
 
-.not_ident_char:
-  xor rax, rax
+err_invalid_null_chr:
+  dbg B
+  callf print_err, ERR_MSG_006
   ret
 
-is_digit_char:
-  xor rax, rax
-  
-  cmp bl, '0'
-  jl .end
-  cmp bl, '9'
-  jg .end
-  mov rax, 1
-.end:
+err_invalid_str_esc:
+  dbg C
+  callf print_err, ERR_MSG_004
   ret
 
-is_single_symbol:
-  mov rax, 1
-
-  cmp bl, '%'
-  je .end
-
-  cmp bl, '('
-  jl .others
-  cmp bl, '/'
-  jle .end
-
-.others:
-  cmp bl, ';'
-  je .end
-
-  cmp bl, '^'
-  je .end
-
-  cmp bl, '{'
-  je .end
-
-  cmp bl, '}'
-  je .end
-
-  cmp bl, '~'
-  je .end  
-
-  xor rax, rax
-.end:
+collect_dqoute:
+  dbg D
+  mov byte [r14], '"'
+  inc r14
   ret
 
-is_whitespace_char:
-  mov rax, 1
-
-  cmp bl, ' '
-  je .end
-
-  cmp bl, `\t`
-  je .end
-
-  cmp bl, `\n`
-  je .end
-
-  cmp bl, `\r`
-  je .end
-
-  xor rax, rax
-.end:
+err_invalid_hex_esc:
+  dbg E
+  callf print_err, ERR_MSG_005
   ret
 
-is_char_char:
-  xor rax, rax
+collect_upper_hex:
+  dbg F
+  mov rax, r8
+  shr rax, 4
+  cmp rax, 3
+  je .not_abdef                        ; Check if it's a number's bitfield
 
-  cmp bl, "'"
-  je .end
-  cmp bl, `\n`
-  je .end
-  cmp rbx, EOF
-  je .end
-  mov rax, 1
-
-.end:
+  add r8, 9                            ; If not, add 9 so that the ascii value
+                                       ; macthes the numeric value in 4 low bits
+.not_abdef:
+  and r8, 0xF                          ; Isolate the 4 lower bits
+  shl r8, 4                            ; Shift them to the upper 4 bits
+  mov [r14], r8b
   ret
 
-is_string_char:
-  xor rax, rax
+collect_lower_hex:
+  dbg 10
+  mov rax, r8
+  shr rax, 4
+  cmp rax, 3
+  je .not_abdef
 
-  cmp bl, '"'
-  je .end
-  cmp bl, `\n`
-  je .end
-  cmp rbx, EOF
-  je .end
-  mov rax, 1
+  add r8, 9
 
-.end:
+.not_abdef:
+  and r8, 0xF
+  or [r14], r8
+  inc r14
   ret
 
-is_hex_char:
-  mov rax, 1
-
-  cmp bl, 'a'
-  jl .try_upper
-  cmp bl, 'f'
-  jg .try_upper
-  jmp .end
-
-.try_upper:
-  cmp bl, 'A'
-  jl .try_digit
-  cmp bl, 'F'
-  jg .try_digit
-  jmp .end
-
-.try_digit:
-  cmp bl, '0'
-  jge .end
-  cmp bl, '9'
-  jle .end
-
-  xor rax, rax  
-.end:
+err_invalid_chr_esc:
+  dbg 11
+  callf print_err, ERR_MSG_007
   ret
 
+collect_sqoute:
+  dbg 12
+  mov byte [r14], "'"
+  inc r14
+  ret
+
+err_invalid_number:
+  dbg 13
+  callf print_err, ERR_MSG_008
+  ret
+
+into_float_collect:
+  dbg 14
+  call collect
+  mov byte [r15 - 1], TK_FLOAT              ; Rewrite the token kind
+  ret
+
+err_invalid_float:
+  dbg 15
+  callf print_err, ERR_MSG_002
+  ret
+
+into_lesseq:
+  dbg 16
+  mov byte [r15 - 1], TK_LESSEQ
+  ret
+
+into_dequal:
+  dbg 17
+  mov byte [r15 - 1], TK_DEQUAL
+  ret
+
+into_greateq:
+  dbg 18
+  mov byte [r15 - 1], TK_GRETEQ
+  ret
+
+into_damp:
+  dbg 19
+  mov byte [r15 - 1], TK_DAMP
+  ret
+
+into_dvbar:
+  dbg 1A
+  mov byte [r15 - 1], TK_DVBAR
+  ret
+
+into_nequal:
+  dbg 1B
+  mov byte [r15 - 1], TK_NEQUAL
+  ret
+
+err_invalid_effect:
+  callf print_err, ERR_MSG_009
+  ret
+
+err_dbg:
+  callf print_err, DBG_003
+  ret
 
 
 section .data
 str_const ERR_MSG_000, `Source code exceeds 10KB.\n`
 str_const ERR_MSG_001, `Encountered invalid token.\n`
-str_const ERR_MSG_002, `Invalid float literal, expected digits after '.'.\n`
+str_const ERR_MSG_002, `Invalid float literal.\n`
 str_const ERR_MSG_003, `Expected a terminating '"' before EOF/EOL.\n`
 str_const ERR_MSG_004, `Invalid string escape code.\n`
 str_const ERR_MSG_005, `Invalid hex escape code, expected two hex digits.\n`
 str_const ERR_MSG_006, `Invalid char, expected single character followed by a terminating "'".\n`
 str_const ERR_MSG_007, `Invalid char escape code.\n`
+str_const ERR_MSG_008, `Invalid number literal.\n`
+str_const ERR_MSG_009, `Invalid effect!\n`
 
-str_const DBG_000, `Wow\n`
-str_const DBG_001, `Kek\n`
-str_const DBG_002, `Rekt\n`
+str_const  DBG_F_1, `push_string\n`
+str_const  DBG_F_2, `push_symbol\n`
+str_const  DBG_F_3, `push_char\n`
+str_const  DBG_F_4, `push_collect_int\n`
+str_const  DBG_F_5, `push_collect_ident\n`
+str_const  DBG_F_6, `err_invalid_char\n`
+str_const  DBG_F_7, `collect\n`
+str_const  DBG_F_8, `err_expected_str_term\n`
+str_const  DBG_F_9, `push_buffer\n`
+str_const  DBG_F_A, `err_expected_chr_term\n`
+str_const  DBG_F_B, `err_invalid_null_chr\n`
+str_const  DBG_F_C, `err_invalid_str_esc\n`
+str_const  DBG_F_D, `collect_dqoute\n`
+str_const  DBG_F_E, `err_invalid_hex_esc\n`
+str_const  DBG_F_F, `collect_upper_hex\n`
+str_const DBG_F_10, `collect_lower_hex\n`
+str_const DBG_F_11, `err_invalid_chr_esc\n`
+str_const DBG_F_12, `collect_sqoute\n`
+str_const DBG_F_13, `err_invalid_number\n`
+str_const DBG_F_14, `into_float_collect\n`
+str_const DBG_F_15, `err_invalid_float\n`
+str_const DBG_F_16, `into_lesseq\n`
+str_const DBG_F_17, `into_dequal\n`
+str_const DBG_F_18, `into_greateq\n`
+str_const DBG_F_19, `into_damp\n`
+str_const DBG_F_1A, `into_dvbar\n`
+str_const DBG_F_1B, `into_nequal\n`
+str_const DBG_F_FF, `err_invalid_effect\n`
+
+str_const DBG_000, `========================\n`
+str_const DBG_001, `-> `
+str_const DBG_002, `.\n`
 str_const DBG_003, `DanK\n`
+str_const DBG_004, `------------------------\n`
 
 str_const KW_FN    , "fn"
 str_const KW_TYPE  , "type"
@@ -730,15 +499,5 @@ str_const KW_ELSE  , "else"
 str_const KW_LET   , "let"
 str_const KW_RETURN, "return"
 
-LEXER_JUMP_TABLE:
-dq lex.state_ready           , lex.state_ident           , lex.state_number
-dq lex.state_string          , lex.state_char            , lex.state_amp
-dq lex.state_vbar            , lex.state_less            , lex.state_great
-dq lex.state_equal           , lex.state_bang            , lex.state_char_end
-dq lex.state_char_esc        , lex.state_char_esc_hex_1  , lex.state_char_esc_hex_2
-dq lex.state_float           , lex.state_float_dec       , lex.state_string_esc
-dq lex.state_string_esc_hex_1, lex.state_string_esc_hex_2
-
 section .bss
-
-
+VALUE_BUFFER resb 1024

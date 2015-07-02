@@ -3,7 +3,7 @@
 ; Parses and compiles l1
 %include "macros.asm"
 %include "io.asm"
-%include "neo_lex.asm"
+%include "lex.asm"
 
 section .text
 
