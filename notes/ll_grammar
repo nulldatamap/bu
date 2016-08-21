@@ -1,0 +1,79 @@
+ 1  start     -> s_program $                             | 
+ 2  s_program -> program s_program                       | 
+ 3  s_program -> ε                                       | 
+ 4  program   -> tydef                                   | s_typedef
+ 5  program   -> def                                     | s_def
+ 6  program   -> fn                                      | s_fn
+ 7  tydef     -> 'type' ident '=' ty                     | 
+ 8  fn        -> 'fn' ident '(' o_itseq ')' ty block     | 
+ 9  o_itseq   -> itseq                                   | 
+10  o_itseq   -> ε                                       | 
+11  itseq     -> ident ty s_itpair                       | 
+12  s_itpair  -> itapir s_itpair                         | 
+13  s_itpair  -> ε                                       | 
+14  itpair    -> ',' ident ty                            | 
+15  ty        -> s_aster ident                           | s_type
+16  s_aster   -> '*' s_aster                             | s_aster
+17  s_aster   -> ε                                       | 
+18  block     -> '{' s_stmt '}'                          | s_block
+19  s_stmt    -> stmt s_stmt                             | 
+20  s_stmt    -> ε                                       | t_block
+21  stmt      -> if                                      | s_if
+22  stmt      -> def                                     | s_def
+23  stmt      -> ret                                     | s_ret
+24  stmt      -> expr                                    | 
+25  if        -> 'if' ifbody                             | 
+26  ifbody    -> expr block o_elif o_else                | 
+27  o_elif    -> elif                                    | s_elif
+28  o_elif    -> ε                                       | 
+29  o_else    -> else                                    | s_else
+30  o_else    -> ε                                       | 
+31  elif      -> 'elif' ifbody                           | 
+32  else      -> 'else' block                            | 
+33  def       -> 'let' ident ty '=' expr                 | 
+34  ret       -> 'return' expr                           | 
+35  expr      -> o_unop binterm o_semi                   | 
+36  o_semi    -> ';'                                     | 
+37  o_semi    -> ε                                       | 
+38  o_unop    -> unop                                    | 
+39  o_unop    -> ε                                       | 
+40  unop      -> '-'                                     | s_neg
+41  unop      -> '*'                                     | s_deref
+42  unop      -> '&'                                     | s_addr
+43  unop      -> '!'                                     | s_not
+44  unop      -> '~'                                     | s_bnot
+45  binterm   -> aterm s_btpair                          | 
+46  s_btpair  -> binop aterm s_btpair                    | 
+47  s_btpair  -> ε                                       | 
+48  binop     -> '+'                                     | s_add
+49  binop     -> '-'                                     | s_sub
+50  binop     -> '*'                                     | s_mul
+51  binop     -> '/'                                     | s_div
+52  binop     -> '%'                                     | s_mod
+53  binop     -> '&&'                                    | s_and
+54  binop     -> '||'                                    | s_or
+55  binop     -> '&'                                     | s_band
+56  binop     -> '|'                                     | s_bor
+57  binop     -> '^'                                     | s_xor
+58  binop     -> '=='                                    | s_eq
+59  binop     -> '!='                                    | s_neq
+60  binop     -> '<'                                     | s_lt
+61  binop     -> '>'                                     | s_gt
+62  binop     -> '<='                                    | s_le
+63  binop     -> '>='                                    | s_ge
+64  aterm     -> term s_aop                              | 
+65  s_aop     -> '(' o_exprseq ')' s_aop                 | s_call
+66  s_aop     -> ε                                       | 
+67  o_exprseq -> exprseq                                 | 
+68  o_exprseq -> ε                                       | t_call
+69  exprseq   -> expr s_comexpr                          | 
+70  s_comexpr -> ',' expr s_comexpr                      | 
+71  s_comexpr -> ε                                       | 
+72  term      -> lit                                     | s_lit
+73  term      -> ident                                   | s_var
+74  lit       -> STRING                                  | s_str
+75  lit       -> CHAR                                    | s_chr
+76  lit       -> INT                                     | s_int
+77  let       -> FLOAT                                   | s_flt
+78  ident     -> IDENT                                   | 
+ 
