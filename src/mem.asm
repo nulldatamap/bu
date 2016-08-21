@@ -7,8 +7,8 @@ MEMORY_BLOCK_HEADER_SIZE equ 8
 ; a header + 8 bytes
 MEMORY_BLOCK_MIN_SIZE    equ 16
 
-; initalloc () int
-initalloc:
+; init_alloc () int
+init_malloc:
   ; sys_brk
   mov rax, 12
   ; addr = 0 (INVALID)
@@ -18,8 +18,8 @@ initalloc:
   mov qword [lowest_free_addr], rax
   ret
 
-; balloc ( int size ) ptr
-balloc:
+; malloc ( int size ) ptr
+malloc:
   ; Store the base size in r10
   mov r10, rdi
   ; Store the free flag mask for later
@@ -179,8 +179,8 @@ _search_for_free_block:
   pop r10
   ret
 
-; bfree ( ptr addr ) int
-bfree:
+; free ( ptr addr ) int
+free:
   ; Store the free flag mask
   mov r8, 1 << 63
   ; Get the header of the allocation

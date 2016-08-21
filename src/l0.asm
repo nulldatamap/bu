@@ -13,21 +13,21 @@ _start:
   call lex
   callf print_err, DBG_000
   mov rdi, rax                         ; The return code is the one of lex()
-  call initalloc
+  call init_malloc
   callf print_err, DBG_000
 
-  callf balloc, 1032
+  callf malloc, 1032
   push rax
   callf print_int, rax
 
 
-  callf balloc, 512
+  callf malloc, 512
   callf print_int, rax
   pop rax
-  callf bfree, rax
-  callf balloc, 512 
+  callf free, rax
+  callf malloc, 512 
   callf print_int, rax
-  callf balloc, 512
+  callf malloc, 512
   callf print_int, rax
 
   call exit
