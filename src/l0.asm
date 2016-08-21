@@ -11,24 +11,24 @@ section .text
 global _start
 _start:
   call lex
-  callf print_err, DBG_000
-  mov rdi, rax                         ; The return code is the one of lex()
   call init_malloc
-  callf print_err, DBG_000
-
   callf malloc, 1032
   push rax
   callf print_int, rax
 
-
   callf malloc, 512
+  callf print_err, DBG_000
   callf print_int, rax
   pop rax
   callf free, rax
   callf malloc, 512 
   callf print_int, rax
   callf malloc, 512
+  
+  call mem_stat
   callf print_int, rax
+  callf print_int, [used_bytes]
+  callf print_int, [free_bytes]
 
   call exit
 

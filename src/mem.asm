@@ -56,18 +56,18 @@ malloc:
   mov rax, [rbx]
   ; Discard the free flag from the size qword
   xor rax, r8
-  sub rax, rdi
+  sub rax, r10
   cmp rax, MEMORY_BLOCK_MIN_SIZE
   jb .takeover_entire_block
   ; If there's enough space left, we split the block by writing a new header
   ; at the end of the to-be allocation
   ; Set rcx the new new block's origin
   lea rcx, [rbx + MEMORY_BLOCK_HEADER_SIZE]
-  add rcx, rdi
+  add rcx, r10
   ; Set it's size to be the remaining size minus the header size and set
   ; free flag in the block header
   sub rax, MEMORY_BLOCK_HEADER_SIZE
-  and rax, r8
+  or rax, r8
   mov [rcx], rax
   ; Check if the origin of this allocation was the lowest free address space
   cmp rbx, [lowest_free_addr]
@@ -218,6 +218,41 @@ free:
 ; returns allocated bytes
 ; mem_stat () int
 mem_stat:
+  ; Load the starting address
+  mov rsi, [addr_space_start]
+  mov r8, 1 << 63
+  ; Use r9 for used bytes
+  mov r9, 0
+  ; And r10 or free bytes
+  mov r10, 0
+  mov rcx, [addr_space_end]
+
+.count_block:
+  ; Check if these bytes or free or not
+  mov rax, [rsi]
+  test rax, r8
+  jnz .count_free_bytes
+  ; If not count them as used bytes
+  add r9, rax
+  jmp .next_block
+
+.count_free_bytes:
+  xor rax, r8
+  add r10, rax
+
+.next_block:
+  ; Then get the next block's address
+  add rsi, rax
+  add rsi, MEMORY_BLOCK_HEADER_SIZE
+  ; Check if we've reached the end 
+  cmp rsi, rcx
+  je .finish
+  jmp .count_block
+
+.finish:
+  mov [used_bytes], r9
+  mov [free_bytes], r10
+
   mov rax, [addr_space_end]
   sub rax, [addr_space_start]
   mov [allocated_bytes], rax
