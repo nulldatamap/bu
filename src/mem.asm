@@ -15,11 +15,13 @@ init_malloc:
   mov rdi, 0
   syscall
   mov [addr_space_end], rax
-  mov qword [lowest_free_addr], rax
+  mov [lowest_free_addr], rax
+  mov [addr_space_start], rax
   ret
 
 ; malloc ( int size ) ptr
 malloc:
+  push rbx
   ; Store the base size in r10
   mov r10, rdi
   ; Store the free flag mask for later
@@ -99,6 +101,7 @@ malloc:
   mov [rbx], r10
   ; Return the start of the address space beyond the header
   lea rax, [rbx + MEMORY_BLOCK_HEADER_SIZE]
+  pop rbx
   ret
   
 .alloc_at_end:
@@ -131,10 +134,12 @@ malloc:
 
   ; Return the start of the address space beyond the header
   lea rax, [rbx + MEMORY_BLOCK_HEADER_SIZE]
+  pop rbx
   ret
 
 .failed:
   mov rax, 0
+  pop rbx
   ret
 
 ; _search_for_free_block ( int size, ptr start ) ptr
@@ -198,9 +203,9 @@ free:
 .skip_lowest_free_addr_update:
 
   ; Set the free flag
-  mov rbx, rax
-  or rbx, r8
-  mov [rdi], rbx
+  mov r9, rax
+  or r9, r8
+  mov [rdi], r9
   ; Return the length which is stored in rax
   ret
 
@@ -209,9 +214,24 @@ free:
   mov rax, 0
   ret
 
+; Updates the status variables: allocated_bytes, used_bytes, free_bytes
+; returns allocated bytes
+; mem_stat () int
+mem_stat:
+  mov rax, [addr_space_end]
+  sub rax, [addr_space_start]
+  mov [allocated_bytes], rax
+  ret
+
 section .bss
 alignb 8
+
 lowest_free_addr resb 8
+addr_space_start resb 8
 addr_space_end   resb 8
+
+allocated_bytes  resb 8
+used_bytes       resb 8
+free_bytes       resb 8
 
 
