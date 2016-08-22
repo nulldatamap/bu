@@ -80,97 +80,83 @@ Vec_resize:
   pop r12
   ret
 
+%macro _Vec_push_ 3
+  push r12
+  push r13
+  push r14
+
+  mov r12, rdi
+  mov %2, %1
+  
+  mov rsi, [r12 + Vec.length]
+  mov r14, rsi
+  add rsi, %3
+
+  call Vec_resize
+
+  add r14, [r12 + Vec.data]
+  mov [r14], %2
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+%endmacro
 
 ; Vec_pushb ( vec *Vec, byte val ) ptr
 Vec_pushb:
-  push r12
-  push r13
-  push r14
-
-  mov r12, rdi
-  mov r13b, sil
-  
-  mov r14, [r12 + Vec.data]
-  mov rsi, [r12 + Vec.length]
-  lea r14, [r14 + rsi]
-  inc rsi
-
-  call Vec_resize
-  
-  mov [r14], r13b
-
-  pop r14
-  pop r13
-  pop r12
-  ret
+  _Vec_push_ sil, r13b, 1
 
 ; Vec_pushw ( vec *Vec, word val ) ptr
 Vec_pushw:
-  push r12
-  push r13
-  push r14
-
-  mov r12, rdi
-  mov r13w, si
-  
-  mov r14, [r12 + Vec.data]
-  mov rsi, [r12 + Vec.length]
-  lea r14, [r14 + rsi]
-  add rsi, 2
-
-  call Vec_resize
-  
-  mov [r14], r13w
-
-  pop r14
-  pop r13
-  pop r12
-  ret
+  _Vec_push_ si, r13w, 2
 
 ; Vec_pushd ( vec *Vec, byte val ) ptr
 Vec_pushd:
-  push r12
-  push r13
-  push r14
-
-  mov r12, rdi
-  mov r13d, esi
-  
-  mov r14, [r12 + Vec.data]
-  mov rsi, [r12 + Vec.length]
-  lea r14, [r14 + rsi]
-  add rsi, 4
-
-  call Vec_resize
-  
-  mov [r14], r13d
-
-  pop r14
-  pop r13
-  pop r12
-  ret
+  _Vec_push_ esi, r13d, 4
 
 ; Vec_pushd ( vec *Vec, byte val ) ptr
 Vec_pushq:
-  push r12
-  push r13
-  push r14
+  _Vec_push_ rsi, r13, 8
 
-  mov r12, rdi
-  mov r13, rsi
-  
-  mov r14, [r12 + Vec.data]
-  mov rsi, [r12 + Vec.length]
-  lea r14, [r14 + rsi]
-  add rsi, 8
+; _Vec_check_bounds ( vec *Vec, index int )
+_Vec_check_bounds:
+  cmp rsi, [rdi + Vec.length]
+  jb .in_bounds
+  ; Where out of bounds!
+  callf print_err, OUT_OF_BOUNDS
+  call exit
 
-  call Vec_resize
-  
-  mov [r14], r13
-
-  pop r14
-  pop r13
-  pop r12
+.in_bounds:
   ret
 
+; Vec_lookupb ( vec *Vec, index int ) byte 
+Vec_lookupb:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov al, [rax + rsi]
+  ret
 
+; Vec_lookupw ( vec *Vec, index int ) word
+Vec_lookupw:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov ax, [rax + rsi]
+  ret
+
+; Vec_lookupd ( vec *Vec, index int ) dword
+Vec_lookupd:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov eax, [rax + rsi]
+  ret
+
+; Vec_lookupq ( vec *Vec, index int ) qword
+Vec_lookupq:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov rax, [rax + rsi]
+  ret
+
+section .data
+str_const OUT_OF_BOUNDS, `Vector access out of bounds!\n`
