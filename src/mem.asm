@@ -1,5 +1,50 @@
 section .text
 
+; ============================== The Algorithm =================================
+; This memory allocation algorithm is a basic one. Memory is allocated in 
+; blocks. A block consist of a header which is laid out like this:
+;
+; |<------------------------- 64bit Word Header -------------------------->|                                     
+; [LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLL|F]
+;  ^      ^        ^        ^        ^        ^        ^        ^         ^
+;  0      7        15       23       31       39       47       55        63
+;
+; bit | name
+; 63  | F   : Free flag
+; 0-62| L   : Length field
+;
+; So a header consists of a free flag and a length field. If the free flag is 
+; set then the allocator is allowed to claim and/or split the block for a new
+; allocation. The length field is the amount of space allocated for the block
+; which is located after the header.
+; 
+; The algorithm stores the address of the block with the lowest address that's
+; marked as free ( LFB: lowest free block ). If there is none, that value will
+; be the end of the address space.
+;
+; When allocating the algorithm will check if there is an LFB, if not it's 
+; create a new block at the end of the address space by calling the `brk` 
+; syscall. If the is an LFB available, the length of it is checked. If the size of
+; the block is greater or equal to the requested allocation size, it's marked
+; for allocation. If LFB doesn't fit the requested allocation size, the 
+; allocator will iterate through all the blocks after the LFB until it either
+; finds a block with fits the requested allocation size or reached the end of 
+; the address space. If it reached the end of the address space, a new block is
+; created at the end of the address space.
+;
+; If a previously allocated block - marked as free - is selected for a new 
+; allocation, it's size is compared with the requested allocation size. If there
+; is enough space left ( the length of two headers, 16 bytes ) then a new free
+; block is created behind the newly allocated one with the remaining size. If 
+; the free block has less than those 16 bytes left, those bytes are likely never
+; to be used for a new allocation and therefore just becomes a part of the new
+; allocation ( which means we've actually claimed more memory requested for the 
+; allocation ). The length of the new block is written down in the header and 
+; the free flag is unset.
+; 
+; Freeing memory simply consists of setting the free flag of the specified 
+; allocation and updating the LFB if the address of the free'ed block is lower
+; than the current LFB. 
 
 ; Just a 64bit length field
 MEMORY_BLOCK_HEADER_SIZE equ 8
