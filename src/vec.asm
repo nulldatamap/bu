@@ -81,7 +81,7 @@ Vec_resize:
   ret
 
 
-; Vec_push ( vec *Vec, byte val ) ptr
+; Vec_pushb ( vec *Vec, byte val ) ptr
 Vec_pushb:
   push r12
   push r13
@@ -103,3 +103,74 @@ Vec_pushb:
   pop r13
   pop r12
   ret
+
+; Vec_pushw ( vec *Vec, word val ) ptr
+Vec_pushw:
+  push r12
+  push r13
+  push r14
+
+  mov r12, rdi
+  mov r13w, si
+  
+  mov r14, [r12 + Vec.data]
+  mov rsi, [r12 + Vec.length]
+  lea r14, [r14 + rsi]
+  add rsi, 2
+
+  call Vec_resize
+  
+  mov [r14], r13w
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+
+; Vec_pushd ( vec *Vec, byte val ) ptr
+Vec_pushd:
+  push r12
+  push r13
+  push r14
+
+  mov r12, rdi
+  mov r13d, esi
+  
+  mov r14, [r12 + Vec.data]
+  mov rsi, [r12 + Vec.length]
+  lea r14, [r14 + rsi]
+  add rsi, 4
+
+  call Vec_resize
+  
+  mov [r14], r13d
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+
+; Vec_pushd ( vec *Vec, byte val ) ptr
+Vec_pushq:
+  push r12
+  push r13
+  push r14
+
+  mov r12, rdi
+  mov r13, rsi
+  
+  mov r14, [r12 + Vec.data]
+  mov rsi, [r12 + Vec.length]
+  lea r14, [r14 + rsi]
+  add rsi, 8
+
+  call Vec_resize
+  
+  mov [r14], r13
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+
+

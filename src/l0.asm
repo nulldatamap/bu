@@ -16,14 +16,11 @@ _start:
   mov rbp, rsp
   sub rsp, Vec_size
   callf new_Vec, rbp, 4
-  callf Vec_pushb, rbp, 'a'
-  callf Vec_pushb, rbp, 'b'
-  callf Vec_pushb, rbp, 'c'
-  callf Vec_pushb, rbp, 'd'
-  callf stdout_write, [rbp + Vec.data], [rbp + Vec.length]
-  ; Double the size
-  callf Vec_reallocate, rbp, 8
-  callf stdout_write, [rbp + Vec.data], [rbp + Vec.length]
+  callf Vec_pushb, rbp, 0
+  callf Vec_pushw, rbp, 0
+  callf Vec_pushd, rbp, 0
+  callf Vec_pushq, rbp, 0
+  callf print_int, [rbp + Vec.length]
   call exit
 
 section .data
