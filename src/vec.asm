@@ -56,34 +56,49 @@ Vec_reallocate:
   pop r12
   ret
 
+; Vec_resize ( vec *Vec, int length ) ptr
+Vec_resize:
+  push r12
+  push r13
+
+  mov r12, rdi
+  mov r13, rsi
+
+  mov rax, [r12 + Vec.capacity]
+  cmp r13, rax
+  jbe .skip_reallocation
+
+  mov rcx, 2
+  xor rdx, rdx
+  mul rcx
+  callf Vec_reallocate, rdi, rax
+
+.skip_reallocation:
+  mov [r12 + Vec.length], r13
+  
+  pop r13
+  pop r12
+  ret
+
+
 ; Vec_push ( vec *Vec, byte val ) ptr
 Vec_pushb:
   push r12
   push r13
   push r14
 
-  mov r13, rdi
-  mov r14, rsi
-  mov rax, [r13 + Vec.length]
-  inc rax
-  mov r12, [r13 + Vec.capacity]
-  cmp rax, r12
-  jbe .skip_allocate
-
-  ; Reallocate with capacity * 2 as the new capacity
-  mov rax, 2
-  xor rdx, rdx
-  mul r12
-  callf Vec_reallocate, r13, rax
-
-.skip_allocate:
-  ; Write the byte
-  mov rax, [rdi + Vec.length]
-  mov rdx, [rdi + Vec.data]
-  mov [rdx + rax], r14b
-  ; and increment the size
-  inc qword [rdi + Vec.length]
+  mov r12, rdi
+  mov r13b, sil
   
+  mov r14, [r12 + Vec.data]
+  mov rsi, [r12 + Vec.length]
+  lea r14, [r14 + rsi]
+  inc rsi
+
+  call Vec_resize
+  
+  mov [r14], r13b
+
   pop r14
   pop r13
   pop r12
