@@ -4,32 +4,26 @@
 %include "macros.asm"
 %include "io.asm"
 %include "mem.asm"
+%include "vec.asm"
 %include "lex.asm"
 
 section .text
 
 global _start
 _start:
-  call lex
   call init_malloc
-  callf malloc, 1032
-  push rax
-  callf print_int, rax
-
-  callf malloc, 512
-  callf print_err, DBG_000
-  callf print_int, rax
-  pop rax
-  callf free, rax
-  callf malloc, 512 
-  callf print_int, rax
-  callf malloc, 512
-  
-  call mem_stat
-  callf print_int, rax
-  callf print_int, [used_bytes]
-  callf print_int, [free_bytes]
-
+  call lex
+  mov rbp, rsp
+  sub rsp, Vec_size
+  callf new_Vec, rbp, 4
+  callf Vec_pushb, rbp, 'a'
+  callf Vec_pushb, rbp, 'b'
+  callf Vec_pushb, rbp, 'c'
+  callf Vec_pushb, rbp, 'd'
+  callf stdout_write, [rbp + Vec.data], [rbp + Vec.length]
+  ; Double the size
+  callf Vec_reallocate, rbp, 8
+  callf stdout_write, [rbp + Vec.data], [rbp + Vec.length]
   call exit
 
 section .data
