@@ -87,7 +87,11 @@ malloc:
   
   ; Start searching after the last known lowest free block
   mov rsi, rbx
+  push r8
+  push r10
   call _search_for_free_block
+  pop r10
+  pop r8
 
   mov rbx, rax
   mov rax, [addr_space_end]
@@ -138,7 +142,9 @@ malloc:
   ; and search after this block
   mov rsi, r10
   add rsi, rbx
+  push r10
   call _search_for_free_block
+  pop r10
   mov [lowest_free_addr], rax
 
 .allocate_block:
@@ -189,8 +195,6 @@ malloc:
 
 ; _search_for_free_block ( int size, ptr start ) ptr
 _search_for_free_block:
-  push r10
-  push rcx
   push rbx
   ; Store the size
   mov r10, rdi
@@ -210,13 +214,10 @@ _search_for_free_block:
   ; We've found a match
   mov rax, rsi
   pop rbx
-  pop rcx
-  pop r10
   ret
   
 .load_next_block:
   ; Load the block size and find the next block's offset
-  mov rbx, [rsi]
   add rbx, MEMORY_BLOCK_HEADER_SIZE
   add rsi, rbx
   ; Check if that offset is the end of the address space
@@ -225,8 +226,6 @@ _search_for_free_block:
   mov rax, rsi
   ; Stop checking the blocks if we've reached the end
   pop rbx
-  pop rcx
-  pop r10
   ret
 
 ; free ( ptr addr ) int
