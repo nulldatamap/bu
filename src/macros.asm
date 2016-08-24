@@ -24,6 +24,13 @@
   call %1
 %endmacro
 
+%macro callf 4
+  mov rdi, %2
+  mov rsi, %3
+  mov rdx, %4
+  call %1
+%endmacro
+
 %macro str_const 2
   %strlen %[%1 %+ _LEN_] %2
   %1:

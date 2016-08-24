@@ -158,5 +158,67 @@ Vec_lookupq:
   mov rax, [rax + rsi]
   ret
 
+; Vec_setb ( vec *Vec, index int, val byte )
+Vec_setb:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov [rax + rsi], dl
+  ret
+
+; Vec_setw ( vec *Vec, index int, val word )
+Vec_setw:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov [rax + rsi], dx
+  ret
+
+; Vec_setd ( vec *Vec, index int, val dword )
+Vec_setd:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov [rax + rsi], edx
+  ret
+
+; Vec_setq ( vec *Vec, index int, val qword )
+Vec_setq:
+  call _Vec_check_bounds
+  mov rax, [rdi + Vec.data]
+  mov [rax + rsi], rdx
+  ret
+
+; Vec_push_all ( vec *Vec, data ptr, length int )
+Vec_push_all:
+  push r12
+  push r13
+  push r14
+
+  mov r12, rdi
+  mov r13, rsi
+  mov r14, [r12 + Vec.length]
+  ; Resize to vec.length + length
+  add rdx, r14
+  mov rsi, rdx
+  call Vec_resize
+
+  ; Copy over the contents
+  mov rcx, r14
+  mov rsi, r13
+  mov rdi, [r12 + Vec.data]
+  add rdi, r14
+  rep movsb
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+
+; Vec_concat ( a *Vec, b *Vec )
+Vec_concat:
+  mov rax, rsi
+  mov rsi, [rax + Vec.data]
+  mov rdx, [rax + Vec.length]
+  call Vec_push_all
+  ret
+
 section .data
 str_const OUT_OF_BOUNDS, `Vector access out of bounds!\n`
