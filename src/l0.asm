@@ -14,16 +14,10 @@ _start:
   call init_malloc
   call lex
   mov rbp, rsp
-  lea r12, [rbp + Vec_size]
   sub rsp, Vec_size * 2
   callf new_Vec, rbp, 4
-  callf Vec_pushq, rbp, "!(owwo)!"
-
-  callf new_Vec, r12, 8
-  callf Vec_pushq, r12, ">:^((((("
-
-  callf Vec_concat, rbp, r12
-  callf stdout_write, [rbp + Vec.data], [rbp + Vec.length]
+  callf Vec_resize, rbp, 24
+  callf print_int, [rbp + Vec.capacity]
   call exit
 
 section .data

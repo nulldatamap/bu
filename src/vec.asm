@@ -65,12 +65,18 @@ Vec_resize:
   mov r13, rsi
 
   mov rax, [r12 + Vec.capacity]
+
   cmp r13, rax
   jbe .skip_reallocation
 
-  mov rcx, 2
+  ; Keep mutiplying by two until we can fit it
   xor rdx, rdx
+.bigger:
+  mov rcx, 2
   mul rcx
+  cmp r13, rax
+  ja .bigger
+
   callf Vec_reallocate, rdi, rax
 
 .skip_reallocation:
