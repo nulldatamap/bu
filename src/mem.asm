@@ -2,7 +2,7 @@ section .text
 
 ; ============================== The Algorithm =================================
 ; This memory allocation algorithm is a basic one. Memory is allocated in 
-; blocks. A block consist of a header which is laid out like this:
+;                                                                                                                                        blocks. A block consist of a header which is laid out like this:
 ;
 ; |<------------------------- 64bit Word Header -------------------------->|                                     
 ; [LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLL|F]
@@ -24,8 +24,8 @@ section .text
 ;
 ; When allocating the algorithm will check if there is an LFB, if not it's 
 ; create a new block at the end of the address space by calling the `brk` 
-; syscall. If the is an LFB available, the length of it is checked. If the size of
-; the block is greater or equal to the requested allocation size, it's marked
+; syscall. If the is an LFB available, the length of it is checked. If the size
+; of the block is greater or equal to the requested allocation size, it's marked
 ; for allocation. If LFB doesn't fit the requested allocation size, the 
 ; allocator will iterate through all the blocks after the LFB until it either
 ; finds a block with fits the requested allocation size or reached the end of 
