@@ -6,6 +6,7 @@
 %include "mem.asm"
 %include "vec.asm"
 %include "lex.asm"
+%include "parse.asm"
 
 section .text
 
@@ -13,14 +14,10 @@ global _start
 _start:
   call init_malloc
   call lex
-  mov rbp, rsp
-  sub rsp, Vec_size * 2
-  callf new_Vec, rbp, 4
-  callf Vec_resize, rbp, 24
-  callf print_int, [rbp + Vec.capacity]
+  mov rdi, rax
+  mov rsi, rdx
+  call parse
+  callf print_hex, rax
   call exit
-
-section .data
-test_data db " <---"
 
 section .bss

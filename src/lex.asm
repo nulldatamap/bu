@@ -154,9 +154,22 @@ lex:
   pop rax
   pop rbx
   pop r8
+  
+  lea rax, [rsp + 3 * 8 ]
+  mov rdi, r15
+  sub rdi, rax
+  call malloc
+  mov rbx, rax
 
+  mov rdi, rax
+  mov rsi, rsp
+  mov rcx, r15
+  sub rcx, rsp
+  mov rdx, rcx
+  rep movsb
+  mov rax, rbx
+  
   blockend
-  mov rax, 0
   ret
 
 next_char:
