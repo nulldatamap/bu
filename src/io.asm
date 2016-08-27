@@ -101,6 +101,50 @@ print_int:
   callf stderr_write, rsi, r8          ; Print the string
   ret
 
+; print_hex ( v int ) int
+print_hex:
+  mov byte [int2str_buf_nl], `\n`
+  mov r8, int2str_buf + 19
+  mov byte [r8], '0'
+  mov r9, rdi
+  mov rcx, 0
+  mov rsi, 2
+
+.loop_begin:
+  mov rax, r9
+  shr rax, cl
+  cmp rax, 0
+  je .loop_end
+
+  and rax, 0xF
+  
+  cmp rax, 0x09
+  jg .write_letter
+
+  add rax, '0'
+  jmp .write_to_buffer
+
+.write_letter:
+  add rax, 'a' - 10
+
+.write_to_buffer:
+  mov [r8], al
+  dec r8
+  inc rsi
+
+  add rcx, 4
+  cmp rcx, 64
+  jne .loop_begin
+
+.loop_end:
+  sub r8, 1
+  add rsi, 1
+  mov word [r8], '0x'
+  
+  mov rdi, r8
+  call stdout_write
+  ret
+
 ; stderr_write ( data *u8, len usize ) int
 stderr_write:
   push r11
@@ -150,4 +194,6 @@ str_const SEARCH, "Got so far: "
 
 section .bss
 align 8
-int2str_buf resb 20
+int2str_buf    resb 20
+int2str_buf_nl resb 1
+
