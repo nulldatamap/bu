@@ -6,6 +6,8 @@ section .text
 SRC_BUFFER_SIZE   equ 1024 * 10          ; 10KB
 TOKEN_BUFFER_SIZE equ 1024 * 10
 
+TK_EOF    equ 0
+
 TK_IDENT  equ 1
 TK_INT    equ 2
 TK_FLOAT  equ 3
@@ -141,7 +143,9 @@ lex:
   call push_buffer                     ; Flush it
 
 .dont_flush:
-  
+  mov byte [r15], TK_EOF               ; Write the EOF token
+  inc r15
+
   push r8
   push rbx
   push rax
@@ -155,9 +159,8 @@ lex:
   pop rbx
   pop r8
   
-  lea rax, [rsp + 3 * 8 ]
   mov rdi, r15
-  sub rdi, rax
+  sub rdi, rsp
   call malloc
   mov rbx, rax
 
