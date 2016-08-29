@@ -226,5 +226,27 @@ Vec_concat:
   call Vec_push_all
   ret
 
+; Vec_grow ( vec *Vec, amount int ) ptr
+Vec_grow:
+  push r12
+  push r13
+  push r14
+  mov r12, rdi
+  mov r13, rsi
+  ; Store the old length
+  mov r14, [r12 + Vec.length]
+
+  ; Resize the vector to `vec.length + amount`
+  add rsi, r14
+  call Vec_resize
+  ; And return the starting address of the newly allocated data
+  mov rax, [r12 + Vec.data]
+  add rax, r14
+
+  pop r14
+  pop r13
+  pop r12
+  ret
+
 section .data
 str_const OUT_OF_BOUNDS, `Vector access out of bounds!\n`
