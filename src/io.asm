@@ -109,6 +109,11 @@ print_hex:
   mov r9, rdi
   mov rcx, 0
   mov rsi, 2
+  cmp r9, 0
+  jne .loop_begin
+  dec r8
+  inc rsi
+  jmp .loop_end
 
 .loop_begin:
   mov rax, r9

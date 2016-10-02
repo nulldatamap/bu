@@ -146,18 +146,18 @@ lex:
   mov byte [r15], TK_EOF               ; Write the EOF token
   inc r15
 
-  push r8
-  push rbx
-  push rax
-
-  lea rax, [rsp + 3 * 8 ]
-  mov rbx, r15
-  sub rbx, rax
-  callf stdout_write, rax, rbx
-
-  pop rax
-  pop rbx
-  pop r8
+;  push r8
+;  push rbx
+;  push rax
+;
+;  lea rax, [rsp + 3 * 8 ]
+;  mov rbx, r15
+;  sub rbx, rax
+;  callf stdout_write, rax, rbx
+;
+;  pop rax
+;  pop rbx
+;  pop r8
   
   mov rdi, r15
   sub rdi, rsp
@@ -209,15 +209,15 @@ next_char:
 %endmacro
 
 %macro dbg 1
-  push r8
-  push rbx
-  push rax
-
-  callf print_err, DBG_F_%+ %1
-
-  pop rax
-  pop rbx
-  pop r8
+;  push r8
+;  push rbx
+;  push rax
+;
+;  callf print_err, DBG_F_%+ %1
+;
+;  pop rax
+;  pop rbx
+;  pop r8
 %endmacro
 
 push_string:

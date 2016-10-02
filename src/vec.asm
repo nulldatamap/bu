@@ -60,7 +60,7 @@ Vec_reallocate:
 Vec_resize:
   push r12
   push r13
-
+  
   mov r12, rdi
   mov r13, rsi
 
@@ -241,8 +241,7 @@ Vec_grow:
   call Vec_resize
   ; And return the starting address of the newly allocated data
   mov rax, [r12 + Vec.data]
-  add rax, r14
-
+  
   pop r14
   pop r13
   pop r12

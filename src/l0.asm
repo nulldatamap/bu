@@ -11,13 +11,21 @@
 section .text
 
 global _start
+main:
 _start:
   call init_malloc
   call lex
   mov rdi, rax
   mov rsi, rdx
   call parse
-  callf print_hex, rax
+.inspect:
+  mov r12, rax
+  callf print_hex, [r12 + AST.error]
+  cmp qword [r12 + AST.error], 0
+  je .skip_print_err
+  mov rdi, [r12 + AST.error_msg]
+  call print_err
+.skip_print_err:
   call exit
 
 section .bss

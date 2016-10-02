@@ -2,7 +2,7 @@ section .text
 
 ; ============================== The Algorithm =================================
 ; This memory allocation algorithm is a basic one. Memory is allocated in 
-;                                                                                                                                        blocks. A block consist of a header which is laid out like this:
+; blocks. A block consist of a header which is laid out like this:
 ;
 ; |<------------------------- 64bit Word Header -------------------------->|                                     
 ; [LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLLL LLLLLLL|F]
