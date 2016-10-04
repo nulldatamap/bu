@@ -25,10 +25,14 @@ struc Type
 endstruc
 
 struc Letdef
-;  .name    resb Vec_size
+  .name    resb Vec_size
 ;  .defined resb 1
-;  .value   resb Value_size
+  .value   resb CallExpr
 endstruc
+
+INT_EXPR equ 0
+STR_EXPR equ 1
+CHR_EXPR equ 2
 
 struc UnaryExpr
   .kind     resb 1
@@ -61,13 +65,13 @@ struc NameExpr
 endstruc
 
 struc StringExpr
-  .kind   resb 1
-  .data   resb Vec_size
+  .kind  resb 1
+  .value resb Vec_size
 endstruc
 
 struc CharExpr
-  .kind resb 1
-  .char resb 1
+  .kind  resb 1
+  .value resb 1
 endstruc
 
 struc IntExpr
@@ -232,7 +236,7 @@ parse:
   lea rdi, [r15 + AST.letdefs]
   mov rsi, Letdef_size
   call Vec_grow
-  mov rdi, rax
+  mov rdi, [r15 + AST.letdefs]
   call _letdef
   carry_error_ast
   jmp .done
@@ -337,13 +341,64 @@ _type:
 
 ; _letdef ( ld *Letdef ) (int, *str)
 _letdef:
+  push r15
+  mov r15, rdi
   expect TK_IDENT, .expected_variable_name
-  mov rax, 0
-  ret
+  name_from_token r15 + Letdef.name
+  next
+  expect TK_EQUAL, .expected_eq
+  next
+  
+  lea rdi, [r15 + Letdef.value]
+  pop r15 
+  call _expr
+  push r15
+  carry_error
+  jmp .done
 
 .expected_variable_name:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_VAR_NAME
+  jmp .done
+.expected_eq:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_EQ
+.done:
+  pop r15
+  ret
+
+_expr:
+_lit:
+  push r15
+  mov r15, rdi
+  expect TK_INT, .try_string
+  mov byte [r15 + IntExpr.kind], INT_EXPR
+  lea rdi, [r14 + r12 + 1]
+  call str2int
+  mov [r15 + IntExpr.value], rax
+  jmp .success
+
+.try_string:
+  expect TK_STRING, .try_char
+  mov byte [r15 + StringExpr.kind], STR_EXPR
+  name_from_token r15 + StringExpr.value
+  jmp .success
+
+.try_char:
+  expect TK_CHAR, .expected_literal
+  mov byte [r15 + CharExpr.kind], CHR_EXPR
+  lea rax, [r14 + r12 + 1]
+  mov [r15 + CharExpr.value], rax
+
+.success:
+  next
+  mov rax, 0
+  jmp .done
+.expected_literal:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_LITERAL
+.done:
+  pop r15
   ret
 
 
@@ -357,3 +412,4 @@ str_const ERR_EXPECTED_TYPE_NAME, "Expected a type name."
 str_const ERR_EXPECTED_EQ, "Expected '='."
 str_const ERR_EXPECTED_TYPE, "Expected type name or '*'"
 str_const ERR_EXPECTED_VAR_NAME, "Expected variable name."
+str_const ERR_EXPECTED_LITERAL, "Expected a int, char or string."

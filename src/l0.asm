@@ -20,8 +20,10 @@ _start:
   call parse
 .inspect:
   mov r12, rax
-  callf print_hex, [r12 + AST.error]
-  cmp qword [r12 + AST.error], 0
+  xor rdi, rdi
+  mov dil, [r12 + AST.error]
+  call print_hex
+  cmp byte [r12 + AST.error], 0
   je .skip_print_err
   mov rdi, [r12 + AST.error_msg]
   call print_err

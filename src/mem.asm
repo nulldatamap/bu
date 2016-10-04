@@ -162,7 +162,7 @@ malloc:
   mov rax, 12
   syscall
   
-  ; Let rbx hold the start of the new allocation and old end of the address space
+  ; Let rbx hold the start of the new allocation and old end of address space
   mov rbx, [addr_space_end]
 
   ; If the address space hasn't moved, then do the same >:^S

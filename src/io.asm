@@ -101,6 +101,52 @@ print_int:
   callf stderr_write, rsi, r8          ; Print the string
   ret
 
+; str2int ( s *str ) int
+str2int:
+  ; Needed varibles:
+  ;  Accumilator: rcx
+  ;  Current char: rax
+  ;  String index: rdi
+  ;  String length: rsi
+  ;  Minus flag: r8
+  
+  ; Load the string length and setup the starting index as the end of the string
+  mov rsi, [rdi]
+  lea rdi, [rdi + 8]
+  add rsi, rdi
+  xor r8, r8
+  xor rcx, rcx
+
+  ; Check if there's a minus sign
+  xor rax, rax
+  mov al, [rdi]
+  cmp rax, '-'
+  jne .digit_loop
+  mov r8, 1
+  inc rdi
+
+.digit_loop:
+  xor rax, rax
+  mov al, [rdi]
+  sub rax, '0'
+  add rcx, rax
+  inc rdi
+  cmp rdi, rsi
+  je .done
+  mov rax, rcx
+  mov r9, 10
+  mul r9
+  mov rcx, rax
+  jmp .digit_loop
+  ; Once done, apply the minus sign if need be 
+.done:
+  mov rax, rcx
+  test r8, r8
+  jz .skip_negative
+  neg rax
+.skip_negative:
+  ret
+
 ; print_hex ( v int ) int
 print_hex:
   mov byte [int2str_buf_nl], `\n`
