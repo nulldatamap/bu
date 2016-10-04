@@ -30,9 +30,10 @@ struc Letdef
   .value   resb CallExpr
 endstruc
 
-INT_EXPR equ 0
-STR_EXPR equ 1
-CHR_EXPR equ 2
+INT_EXPR  equ 0
+STR_EXPR  equ 1
+CHR_EXPR  equ 2
+NAME_EXPR equ 3
 
 struc UnaryExpr
   .kind     resb 1
@@ -353,7 +354,7 @@ _letdef:
   pop r15 
   call _expr
   push r15
-  carry_error
+  carry_error .done
   jmp .done
 
 .expected_variable_name:
@@ -368,6 +369,42 @@ _letdef:
   ret
 
 _expr:
+_term:
+  push r15
+  mov r15, rdi
+  expect '(', .try_named
+  next
+  mov rdi, r15
+  call _expr
+  carry_error .done
+  expect ')', .expected_cparen
+  next
+  jmp .success
+
+.try_named:
+  expect TK_IDENT, .try_lit
+  mov byte [r15 + NameExpr.kind], NAME_EXPR
+  name_from_token r15 + NameExpr.name
+  next
+  jmp .success
+
+.try_lit:
+  mov rdi, r15
+  call _lit
+  carry_error .done
+
+.success:
+  mov rax, 0
+  jmp .done
+
+.expected_cparen:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_CPAREN
+
+.done:
+  pop r15
+  ret
+
 _lit:
   push r15
   mov r15, rdi
@@ -402,6 +439,7 @@ _lit:
   ret
 
 
+
 section .data
 SYNTAX_ERROR equ 1
 
@@ -413,3 +451,4 @@ str_const ERR_EXPECTED_EQ, "Expected '='."
 str_const ERR_EXPECTED_TYPE, "Expected type name or '*'"
 str_const ERR_EXPECTED_VAR_NAME, "Expected variable name."
 str_const ERR_EXPECTED_LITERAL, "Expected a int, char or string."
+str_const ERR_EXPECTED_CPAREN, "Expected ')'."
