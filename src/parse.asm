@@ -30,10 +30,12 @@ struc Letdef
   .value   resb CallExpr
 endstruc
 
-INT_EXPR  equ 0
-STR_EXPR  equ 1
-CHR_EXPR  equ 2
-NAME_EXPR equ 3
+INT_EXPR   equ 0
+STR_EXPR   equ 1
+CHR_EXPR   equ 2
+NAME_EXPR  equ 3
+FIELD_EXPR equ 4
+CALL_EXPR  equ 5
 
 struc UnaryExpr
   .kind     resb 1
@@ -241,7 +243,6 @@ parse:
   call _letdef
   carry_error_ast
   jmp .done
-  
 
 .m_fndef:
    expect TK_FN, .syntax_error
@@ -369,6 +370,101 @@ _letdef:
   ret
 
 _expr:
+_aterm:
+  call _term
+  push r15
+  mov r15, rdi
+  carry_error .done
+  
+.m_chain:
+  ; Attempt a possible chain of properties and/or function calls
+  expect '.', .try_call
+  next
+  expect TK_IDENT, .expected_name
+  callf malloc, CallExpr_size
+
+  mov rdx, rax
+  mov rdi, rax
+  mov rsi, r15
+  mov rcx, CallExpr_size
+  rep movsb
+
+  mov qword [r15 + FieldExpr.kind], FIELD_EXPR
+  mov [r15 + FieldExpr.subject], rdx
+  name_from_token r15 + FieldExpr.field
+  next
+
+  jmp .m_chain
+
+.try_call:
+  expect '(', .success
+  next
+  callf malloc, CallExpr_size
+
+  mov rdx, rax
+  mov rdi, rax
+  mov rsi, r15
+  mov rcx, CallExpr_size
+  rep movsb
+
+  mov byte [r15 + CallExpr.kind], CALL_EXPR
+  mov qword [r15 + CallExpr.callee], rdx
+  lea rdi, [r15 + CallExpr.args]
+  mov rsi, CallExpr_size
+  call new_Vec
+  ; Read the arguments
+.m_arg:
+  expect ')', .try_arg
+  next
+  jmp .m_chain
+
+.try_arg:
+  lea rdi, [r15 + CallExpr.args]
+  mov rsi, CallExpr_size
+  call Vec_grow
+  mov rdi, r15
+  pop r15
+  push rdi
+  ; Allocate space for the sub-expression for the argument on the vector
+  ; If the call fails, set the size of the vector back to what it was before 
+  ; the allocation. 
+  call _expr
+  pop rdi
+  push r15
+  mov r15, rdi
+  carry_error .deallocate_expr
+  
+  expect ',', .try_closing
+  next
+
+  jmp .try_arg
+
+.try_closing:
+  expect ')', .expected_cparen
+  next
+  jmp .m_chain
+
+.deallocate_expr:
+  sub qword [r15 + CallExpr.args + Vec.length], CallExpr_size
+  jmp .done
+
+.success:
+  mov rax, 0
+  jmp .done
+
+.expected_name:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_VAR_NAME
+  jmp .done
+
+.expected_cparen:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_CPAREN
+
+.done:
+  pop r15
+  ret
+
 _term:
   push r15
   mov r15, rdi
