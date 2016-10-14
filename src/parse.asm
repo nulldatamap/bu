@@ -36,6 +36,8 @@ CHR_EXPR   equ 2
 NAME_EXPR  equ 3
 FIELD_EXPR equ 4
 CALL_EXPR  equ 5
+BIN_EXPR   equ 6
+UNARY_EXPR equ 7
 
 struc UnaryExpr
   .kind     resb 1
@@ -82,6 +84,8 @@ struc IntExpr
   .value resq 1
 endstruc
 
+EXPR_MAX_SIZE equ CallExpr_size
+
 struc Fndef
 endstruc
 
@@ -110,12 +114,16 @@ new_AST:
   blockend
   ret
 
-%macro expect 2
+%macro load_tok 0
   cmp r14, r13
   jge _fatal_error_overread
   
   xor rax, rax
   mov al, [r12 + r14]
+%endmacro
+
+%macro expect 2
+  load_tok
   cmp al, %1
   jne %2
 %endmacro
@@ -168,7 +176,7 @@ new_AST:
 %macro carry_error_ast 0
   cmp rax, 0
   je %%.skip_storing
-
+  mov r15, [rbp - 0x8]
   mov [r15 + AST.error], rax
   mov [r15 + AST.error_msg], rdx
 
@@ -198,10 +206,10 @@ new_AST:
 ; parse ( buffer ptr, length int ) *AST
 parse:
   blockstart
+  sub rsp, 0x8
   push r12
   push r13
   push r14
-  push r15
 
   mov r12, rdi
   mov r13, rsi
@@ -209,7 +217,7 @@ parse:
   
   ; Allocate the AST structure
   callf malloc, AST_size
-  mov r15, rax
+  mov [rbp - 0x8], rax
   ; And initialize it
   callf new_AST, rax
 
@@ -222,6 +230,7 @@ parse:
   expect TK_TYPE, .m_letdef
   next
   ; Ready space on the typedef vector
+  mov r15, [rbp - 0x8]
   lea rdi, [r15 + AST.typedefs]
   mov rsi, Typedef_size
   call Vec_grow
@@ -236,9 +245,11 @@ parse:
   ; Reserve space for the let definition, since its parse function is both
   ; responsible to parsing top-level lets and function level ones
   ; call _letdef
+  mov r15, [rbp - 0x8]
   lea rdi, [r15 + AST.letdefs]
   mov rsi, Letdef_size
   call Vec_grow
+  mov r15, [rbp - 0x8]
   mov rdi, [r15 + AST.letdefs]
   call _letdef
   carry_error_ast
@@ -251,6 +262,7 @@ parse:
    jmp .m_toplevel
 
 .syntax_error:
+  mov r15, [rbp - 0x8]
   mov byte [r15 + AST.error], SYNTAX_ERROR
   lea rax, [r12 + r14]
   mov [r15 + AST.error_tok], rax
@@ -258,8 +270,7 @@ parse:
 .done:
   
   ; Return the AST
-  mov rax, r15
-  pop r15
+  mov rax, [rbp - 0x8]
   pop r14
   pop r13
   pop r12
@@ -273,7 +284,6 @@ _fatal_error_overread:
 ; _typedef ( td *Typedef ) (int, *str)
 _typedef:
   blockstart
-  push r15
   
   mov r15, rdi
   expect TK_IDENT, .expected_type_name
@@ -298,7 +308,6 @@ _typedef:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_TYPE_NAME
 .done:
-  pop r15
   blockend
   ret
 
@@ -323,7 +332,6 @@ _type:
   ret
 
 .ty_name:
-  push r15
   expect TK_IDENT, .expected_type_name
   mov byte [rdi + Type.kind], NAMED_TYPE
   ; Copy the source code string into a string buffer for the type name
@@ -332,18 +340,15 @@ _type:
   name_from_token r15 + Type.name
   next
   mov rax, 0
-  pop r15
   ret
 
 .expected_type_name:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_TYPE
-  pop r15
   ret
 
 ; _letdef ( ld *Letdef ) (int, *str)
 _letdef:
-  push r15
   mov r15, rdi
   expect TK_IDENT, .expected_variable_name
   name_from_token r15 + Letdef.name
@@ -352,9 +357,8 @@ _letdef:
   next
   
   lea rdi, [r15 + Letdef.value]
-  pop r15 
   call _expr
-  push r15
+  
   carry_error .done
   jmp .done
 
@@ -366,27 +370,146 @@ _letdef:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_EQ
 .done:
-  pop r15
   ret
 
 _expr:
-_aterm:
-  call _term
-  push r15
+_unterm:
+  mov r15, rdi
+  ; Test unop
+  ; '-' | '*' | '&' | '!' | '~'
+  load_tok
+  cmp al, '-'
+  je .make_un
+  cmp al, '*'
+  je .make_un
+  cmp al, '&'
+  je .make_un
+  cmp al, '!'
+  je .make_un
+  cmp al, '~'
+  jne .try_binterm
+  
+.make_un:
+  mov byte [r15 + UnaryExpr.kind], UNARY_EXPR
+  mov byte [r15 + UnaryExpr.operator], al
+  mov rdi, EXPR_MAX_SIZE
+  next
+  call malloc
+  mov qword [r15 + UnaryExpr.operand], rax
+  mov rdi, rax
+
+.try_binterm:
+  call _binterm
+  carry_error .done
+
+  load_tok
+  cmp al, ';'
+  jne .success
+  next
+
+.success:
+  mov rax, 0
+
+.done:
+  ret
+
+_binterm:
+  push rdi
+  call _aterm
+  pop rdi
   mov r15, rdi
   carry_error .done
   
+  ; Test binop
+  ; '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^' | '==' | '!='
+  ; '<' | '>' | '<=' | '>='
+  load_tok
+  cmp al, TK_DEQUAL
+  jl .try_pro
+  cmp al, TK_DVBAR
+  jg .try_pro
+  jmp .make_binterm
+
+.try_pro:
+  cmp al, '%'
+  je .make_binterm
+.try_amp:
+  cmp al, '&'
+  je .make_binterm
+.try_ast:
+  cmp al, '*'
+  je .make_binterm
+.try_plu:
+  cmp al, '+'
+  je .make_binterm
+.try_sub:
+  cmp al, '-'
+  je .make_binterm
+.try_sla:
+  cmp al, '/'
+  je .make_binterm
+.try_le:
+  cmp al, '<'
+  je .make_binterm
+.try_gr:
+  cmp al, '>'
+  je .make_binterm
+.try_car:
+  cmp al, '^'
+  je .make_binterm
+.try_vba:
+  cmp al, '|'
+  je .make_binterm
+  ; The token wasn't a binop, so assume we're not making a binterm
+  jmp .success
+
+.make_binterm:
+  push rax
+  next
+  ; Store the op
+  callf malloc, EXPR_MAX_SIZE
+  mov rdx, rax
+  mov rdi, rax
+  mov rsi, r15
+  mov rcx, EXPR_MAX_SIZE
+  rep movsb
+  pop rax
+
+  ; r15 is getting moved into the tokens
+  mov byte [r15 + BinaryExpr.kind], BIN_EXPR
+  mov [r15 + BinaryExpr.operator], al
+  mov [r15 + BinaryExpr.left], rdx
+  callf malloc, EXPR_MAX_SIZE
+  mov [r15 + BinaryExpr.right], rax
+  push r15
+  mov rdi, rax
+  call _expr
+  pop r15
+  carry_error .done
+
+.success:
+  mov rax, 0
+
+.done:
+  ret
+
+_aterm:
+  push rdi
+  call _term
+  pop r15
+  carry_error .done
+
 .m_chain:
   ; Attempt a possible chain of properties and/or function calls
   expect '.', .try_call
   next
   expect TK_IDENT, .expected_name
-  callf malloc, CallExpr_size
+  callf malloc, EXPR_MAX_SIZE
 
   mov rdx, rax
   mov rdi, rax
   mov rsi, r15
-  mov rcx, CallExpr_size
+  mov rcx, EXPR_MAX_SIZE
   rep movsb
 
   mov qword [r15 + FieldExpr.kind], FIELD_EXPR
@@ -399,18 +522,18 @@ _aterm:
 .try_call:
   expect '(', .success
   next
-  callf malloc, CallExpr_size
+  callf malloc, EXPR_MAX_SIZE
 
   mov rdx, rax
   mov rdi, rax
   mov rsi, r15
-  mov rcx, CallExpr_size
+  mov rcx, EXPR_MAX_SIZE
   rep movsb
 
   mov byte [r15 + CallExpr.kind], CALL_EXPR
   mov qword [r15 + CallExpr.callee], rdx
   lea rdi, [r15 + CallExpr.args]
-  mov rsi, CallExpr_size
+  mov rsi, EXPR_MAX_SIZE
   call new_Vec
   ; Read the arguments
 .m_arg:
@@ -420,18 +543,15 @@ _aterm:
 
 .try_arg:
   lea rdi, [r15 + CallExpr.args]
-  mov rsi, CallExpr_size
+  mov rsi, EXPR_MAX_SIZE
   call Vec_grow
   mov rdi, r15
-  pop r15
-  push rdi
+  push r15
   ; Allocate space for the sub-expression for the argument on the vector
   ; If the call fails, set the size of the vector back to what it was before 
   ; the allocation. 
   call _expr
-  pop rdi
-  push r15
-  mov r15, rdi
+  pop r15
   carry_error .deallocate_expr
   
   expect ',', .try_closing
@@ -445,7 +565,7 @@ _aterm:
   jmp .m_chain
 
 .deallocate_expr:
-  sub qword [r15 + CallExpr.args + Vec.length], CallExpr_size
+  sub qword [r15 + CallExpr.args + Vec.length], EXPR_MAX_SIZE
   jmp .done
 
 .success:
@@ -462,11 +582,9 @@ _aterm:
   mov rdx, ERR_EXPECTED_CPAREN
 
 .done:
-  pop r15
   ret
 
 _term:
-  push r15
   mov r15, rdi
   expect '(', .try_named
   next
@@ -498,11 +616,9 @@ _term:
   mov rdx, ERR_EXPECTED_CPAREN
 
 .done:
-  pop r15
   ret
 
 _lit:
-  push r15
   mov r15, rdi
   expect TK_INT, .try_string
   mov byte [r15 + IntExpr.kind], INT_EXPR
@@ -531,7 +647,6 @@ _lit:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_LITERAL
 .done:
-  pop r15
   ret
 
 
