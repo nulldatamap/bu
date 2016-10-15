@@ -241,6 +241,7 @@ Vec_grow:
   call Vec_resize
   ; And return the starting address of the newly allocated data
   mov rax, [r12 + Vec.data]
+  add rax, r14
   
   pop r14
   pop r13
