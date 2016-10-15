@@ -87,6 +87,10 @@ endstruc
 EXPR_MAX_SIZE equ CallExpr_size
 
 struc Fndef
+  .name      resb Vec_size
+  .arguments resb Vec_size
+  .return_ty resb Type_size
+  .body      resb Vec_size
 endstruc
 
 ; new_AST ( ast *AST )
@@ -249,8 +253,7 @@ parse:
   lea rdi, [r15 + AST.letdefs]
   mov rsi, Letdef_size
   call Vec_grow
-  mov r15, [rbp - 0x8]
-  mov rdi, [r15 + AST.letdefs]
+  mov rdi, rax
   call _letdef
   carry_error_ast
   jmp .done
@@ -258,6 +261,14 @@ parse:
 .m_fndef:
    expect TK_FN, .syntax_error
    next
+   mov r15, [rbp - 0x8]
+   lea rdi, [r15 + AST.fndefs]
+   mov rsi, Fndef_size
+   call Vec_grow
+   mov rdi, rax
+   call _fndef
+   carry_error_ast
+   jmp .done
 
    jmp .m_toplevel
 
@@ -345,6 +356,97 @@ _type:
 .expected_type_name:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_TYPE
+  ret
+
+_fndef:
+  mov r15, rdi
+  lea rdi, [r15 + Fndef.arguments]
+  mov rsi, Vec_size + Type_size
+  call new_Vec
+
+  expect TK_IDENT, .expected_fnname
+  name_from_token r15 + Fndef.name
+  
+  next
+  expect '(', .expected_oparen
+  next
+  expect ')', .try_argument
+  next
+  jmp .return_ty
+
+.try_argument:
+  expect TK_IDENT, .expected_arg
+
+  lea rdi, [r15 + Fndef.arguments]
+  mov rsi, Vec_size + Type_size
+  call Vec_grow
+
+  push r15
+  push rax
+  mov r15, rax
+  name_from_token r15
+  next
+  pop r15
+
+  lea rdi, [r15 + Vec_size]
+  call _type
+  carry_error .done
+
+  pop r15
+  expect ',', .expect_end
+  next
+  jmp .try_argument
+
+.expect_end:
+  expect ')', .expected_arg_or_end
+  next
+
+.return_ty:
+  lea rdi, [r15 + Fndef.return_ty]
+  call _type
+  carry_error .done
+  lea rdi, [r15 + Fndef.body]
+  call _block
+  jmp .success
+
+.expected_arg_or_end:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_ARG_OR_END
+  jmp .done
+.expected_arg:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_ARGUMENT
+  jmp .done
+.expected_oparen:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_OPAREN
+  jmp .done
+.expected_fnname:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_FN_NAME
+  jmp .done
+.success:
+  mov rax, 0
+.done:
+  ret
+
+_block:
+  expect '{', .expected_obrace
+  next
+  expect '}', .expected_cbrace
+  next
+
+.expected_obrace:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_OBRACE
+  ret
+.expected_cbrace:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_CBRACE
+  ret
+.success:
+  mov rax, 0
+.done:
   ret
 
 ; _letdef ( ld *Letdef ) (int, *str)
@@ -662,4 +764,10 @@ str_const ERR_EXPECTED_EQ, "Expected '='."
 str_const ERR_EXPECTED_TYPE, "Expected type name or '*'"
 str_const ERR_EXPECTED_VAR_NAME, "Expected variable name."
 str_const ERR_EXPECTED_LITERAL, "Expected a int, char or string."
+str_const ERR_EXPECTED_OPAREN, "Expected function arguments."
 str_const ERR_EXPECTED_CPAREN, "Expected ')'."
+str_const ERR_EXPECTED_FN_NAME, "Expected function name."
+str_const ERR_EXPECTED_ARGUMENT, "Expected function argument."
+str_const ERR_EXPECTED_OBRACE, "Expected '{'."
+str_const ERR_EXPECTED_CBRACE, "Expected '}'."
+str_const ERR_EXPECTED_ARG_OR_END, "Expected another argument or ')'."
