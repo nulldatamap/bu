@@ -56,6 +56,12 @@ read_str:
   mov [r15], rax                       ; Write the string length
   ret
 
+; write_err_nl () void
+write_err_nl:
+  mov rdi, MSG_NEWLINE
+  call print_err
+  ret
+
 ; print_int ( v int ) int
 print_int:
   mov rsi, int2str_buf + 20            ; String cursor
@@ -242,6 +248,7 @@ exit:
 
 section .data
 str_const SEARCH, "Got so far: "
+str_const MSG_NEWLINE, `\n`
 
 section .bss
 align 8

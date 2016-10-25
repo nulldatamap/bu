@@ -24,12 +24,6 @@ struc Type
   .name resb Vec_size
 endstruc
 
-struc Letdef
-  .name    resb Vec_size
-;  .defined resb 1
-  .value   resb CallExpr
-endstruc
-
 INT_EXPR   equ 0
 STR_EXPR   equ 1
 CHR_EXPR   equ 2
@@ -86,12 +80,64 @@ endstruc
 
 EXPR_MAX_SIZE equ CallExpr_size
 
+struc Letdef
+  .name    resb Vec_size
+  .type    resb Type_size
+  .defined resb 1
+  .value   resb EXPR_MAX_SIZE
+endstruc
+
 struc Fndef
   .name      resb Vec_size
   .arguments resb Vec_size
   .return_ty resb Type_size
   .body      resb Vec_size
 endstruc
+
+EXPR_STMT equ 0
+DEF_STMT  equ 1
+RET_STMT  equ 2
+IF_STMT   equ 3
+ASGN_STMT equ 4
+
+struc ExprStmt
+  .kind resb 1
+  .expr resb EXPR_MAX_SIZE
+endstruc
+
+struc AsgnStmt
+  .kind resb 1
+  .lhs  resb EXPR_MAX_SIZE
+  .rhs  resb EXPR_MAX_SIZE
+endstruc
+
+struc DefStmt
+  .kind resb 1
+  .def  resb Letdef_size
+endstruc
+
+struc RetStmt
+  .kind resb 1
+  .expr resb EXPR_MAX_SIZE
+endstruc
+
+IFK_THEN equ 0
+IFK_ELSE equ 1
+IFK_ELIF equ 2
+
+struc If
+  .cond    resb EXPR_MAX_SIZE
+  .then    resb Vec_size
+  .if_kind resb 1
+  .else    resb Vec_size
+endstruc
+
+struc IfStmt
+  .kind    resb 1
+  .if      resb If_size
+endstruc
+
+STMT_MAX_SIZE equ IfStmt_size
 
 ; new_AST ( ast *AST )
 new_AST:
@@ -121,7 +167,7 @@ new_AST:
 %macro load_tok 0
   cmp r14, r13
   jge _fatal_error_overread
-  
+
   xor rax, rax
   mov al, [r12 + r14]
 %endmacro
@@ -135,7 +181,7 @@ new_AST:
 %macro next 0
   cmp r14, r13
   jge _fatal_error_overread
-  
+
   mov al, [r12 + r14]
   ; Find out what token this is and skip the needed amount of bytes
   cmp al, TK_IDENT
@@ -151,9 +197,13 @@ new_AST:
   je %%string_next
 
   cmp al, TK_CHAR
-  je %%string_next
+  je %%char_next
+
   ; Symbol:
   inc r14
+  jmp %%end
+%%char_next:
+  add r14, 2
   jmp %%end
 %%string_next:
   ; Skip length field + string data (1 + 8 + n)
@@ -183,12 +233,13 @@ new_AST:
   mov r15, [rbp - 0x8]
   mov [r15 + AST.error], rax
   mov [r15 + AST.error_msg], rdx
+  mov [r15 + AST.error_tok], r14
 
   jmp .done
-  
+
 %%.skip_storing:
 
-%endmacro 
+%endmacro
 
 %macro name_from_token 1
   ; Load the address of the ident string
@@ -207,6 +258,77 @@ new_AST:
   call Vec_push_all
 %endmacro
 
+; display_tok () void
+display_tok:
+  push r14
+  push r12
+  
+  mov r12, rdi
+  mov r14, rsi
+
+  xor rax, rax
+  mov al, [r12 + r14]
+  
+  cmp al, TK_EOF
+  je .as_eof
+
+  cmp al, TK_IDENT
+  je .as_string
+
+  cmp al, TK_STRING
+  je .as_string
+
+  cmp al, TK_FLOAT
+  je .as_string
+
+  cmp al, TK_INT
+  je .as_string
+
+  cmp al, TK_CHAR
+  je .as_char
+
+  cmp al, TK_FN
+  jb .as_symbol
+  cmp al, TK_RETURN
+  ja .as_symbol
+  sub al, TK_FN
+  mov rdi, [KEYWORD_NAME_TABLE + 8 * rax]
+  call print_err
+  jmp .done
+
+.as_symbol:
+  lea rdi, [r14 + r12]
+  mov rsi, 1
+  call stderr_write
+  jmp .done
+
+.as_eof:
+  mov rdi, TKS_EOF
+  call print_err
+  jmp .done
+
+.as_char:
+  mov rdi, MSG_SQT
+  call print_err
+  lea rdi, [r14 + r12 + 1]
+  mov rsi, 1
+  call stderr_write
+  mov rdi, MSG_SQT
+  call print_err
+  jmp .done 
+
+.as_string:
+  mov rdi, MSG_DQT
+  call print_err
+  lea rdi, [r12 + r14 + 1]
+  call print_err
+  mov rdi, MSG_DQT
+  call print_err
+.done:
+  pop r12
+  pop r14
+  ret
+
 ; parse ( buffer ptr, length int ) *AST
 parse:
   blockstart
@@ -218,7 +340,7 @@ parse:
   mov r12, rdi
   mov r13, rsi
   mov r14, 0
-  
+
   ; Allocate the AST structure
   callf malloc, AST_size
   mov [rbp - 0x8], rax
@@ -226,10 +348,14 @@ parse:
   callf new_AST, rax
 
 .m_toplevel:
+  mov rdi, r12
+  mov rsi, r14
+  call display_tok
+  call write_err_nl
   ; Rule: program := (typedef | def | fun)*
   expect TK_EOF, .m_typedef
   jmp .done
-  
+
 .m_typedef:
   expect TK_TYPE, .m_letdef
   next
@@ -239,9 +365,11 @@ parse:
   mov rsi, Typedef_size
   call Vec_grow
   mov rdi, rax
+  push r15
   call _typedef
+  pop r15
   carry_error_ast
-  jmp .done
+  jmp .m_toplevel
 
 .m_letdef:
   expect TK_LET, .m_fndef
@@ -254,9 +382,11 @@ parse:
   mov rsi, Letdef_size
   call Vec_grow
   mov rdi, rax
+  push r15
   call _letdef
+  push r15
   carry_error_ast
-  jmp .done
+  jmp .m_toplevel
 
 .m_fndef:
    expect TK_FN, .syntax_error
@@ -266,20 +396,20 @@ parse:
    mov rsi, Fndef_size
    call Vec_grow
    mov rdi, rax
+   push r15
    call _fndef
+   push r15
    carry_error_ast
-   jmp .done
 
    jmp .m_toplevel
 
 .syntax_error:
-  mov r15, [rbp - 0x8]
-  mov byte [r15 + AST.error], SYNTAX_ERROR
-  lea rax, [r12 + r14]
-  mov [r15 + AST.error_tok], rax
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_TOP_LEVEL
+  carry_error_ast
 
 .done:
-  
+
   ; Return the AST
   mov rax, [rbp - 0x8]
   pop r14
@@ -295,7 +425,7 @@ _fatal_error_overread:
 ; _typedef ( td *Typedef ) (int, *str)
 _typedef:
   blockstart
-  
+
   mov r15, rdi
   expect TK_IDENT, .expected_type_name
   name_from_token r15 + Typedef.name
@@ -308,6 +438,10 @@ _typedef:
   call _type
   carry_error .done
 
+  expect ';', .skip_semi
+  next
+
+.skip_semi:
   mov rax, 0
   jmp .done
 
@@ -329,7 +463,7 @@ _type:
   next
   ; Create a pointer type and read it's "pointing to" type
   mov byte [rdi + Type.kind], PTR_TYPE
-  
+
   push rdi
   mov rdi, Type_size
   call malloc
@@ -338,7 +472,9 @@ _type:
   mov [rdi + Type.name], rax
   mov rdi, rax
   ; Read the "pointing to" type of the pointer type
+  push r15
   call _type
+  pop r15
   carry_error
   ret
 
@@ -346,9 +482,11 @@ _type:
   expect TK_IDENT, .expected_type_name
   mov byte [rdi + Type.kind], NAMED_TYPE
   ; Copy the source code string into a string buffer for the type name
-  
+  push r15
+  mov r15, rdi
   ; Allocate the string buffer
   name_from_token r15 + Type.name
+  pop r15
   next
   mov rax, 0
   ret
@@ -366,7 +504,7 @@ _fndef:
 
   expect TK_IDENT, .expected_fnname
   name_from_token r15 + Fndef.name
-  
+
   next
   expect '(', .expected_oparen
   next
@@ -405,6 +543,7 @@ _fndef:
   lea rdi, [r15 + Fndef.return_ty]
   call _type
   carry_error .done
+
   lea rdi, [r15 + Fndef.body]
   call _block
   jmp .success
@@ -431,10 +570,83 @@ _fndef:
   ret
 
 _block:
+  mov r15, rdi
+  mov rsi, STMT_MAX_SIZE
+  call new_Vec
   expect '{', .expected_obrace
   next
-  expect '}', .expected_cbrace
+
+  ; jmp .try_def
+
+.try_another:
+  expect '}', .try_def
   next
+  jmp .success
+
+.try_def:
+  expect TK_LET, .m_ret
+  next
+  callf Vec_grow, r15, STMT_MAX_SIZE
+  mov byte [rax + DefStmt.kind], DEF_STMT
+  lea rdi, [rax + DefStmt.def]
+  push r15
+  call _letdef
+  pop r15
+  carry_error .done
+  jmp .try_another
+
+.m_ret:
+  expect TK_RETURN, .m_if
+  next
+  callf Vec_grow, r15, STMT_MAX_SIZE
+  mov byte [rax + RetStmt.kind], RET_STMT
+  lea rdi, [rax + RetStmt.expr]
+  push r15
+  call _expr
+  pop r15
+  carry_error .done
+  jmp .try_another
+
+.m_if:
+  expect TK_IF, .m_asgn
+  next
+
+  callf Vec_grow, r15, STMT_MAX_SIZE
+  mov byte [rax + IfStmt.kind], IF_STMT
+  lea rdi, [rax + 1]
+  push r15
+  call _if
+  pop r15
+  carry_error .done
+
+  jmp .try_another
+
+.m_asgn:
+  callf Vec_grow, r15, STMT_MAX_SIZE
+  lea rdi, [rax + ExprStmt.expr]
+  mov r8, rax
+  push r8
+  push r15
+  call _expr
+  pop r15
+  pop r8
+  carry_error .done
+
+  expect TK_EQUAL, .skip_asgn
+  next
+
+  mov byte [r8 + AsgnStmt.kind], ASGN_STMT
+  lea rdi, [r8 + AsgnStmt.rhs]
+  push r15
+  call _expr
+  pop r15
+  carry_error .done
+
+  jmp .try_another
+
+.skip_asgn:
+  mov byte [r8 + ExprStmt.kind], EXPR_STMT
+  jmp .try_another
 
 .expected_obrace:
   mov rax, SYNTAX_ERROR
@@ -455,12 +667,18 @@ _letdef:
   expect TK_IDENT, .expected_variable_name
   name_from_token r15 + Letdef.name
   next
-  expect TK_EQUAL, .expected_eq
+  lea rdi, [r15 + Letdef.type]
+  call _type
+  carry_error .done
+  expect TK_EQUAL, .no_def
   next
-  
+
+  mov byte [r15 + Letdef.defined], 1
   lea rdi, [r15 + Letdef.value]
+  push r15
   call _expr
-  
+  pop r15
+
   carry_error .done
   jmp .done
 
@@ -468,9 +686,54 @@ _letdef:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_VAR_NAME
   jmp .done
-.expected_eq:
-  mov rax, SYNTAX_ERROR
-  mov rdx, ERR_EXPECTED_EQ
+.no_def:
+  mov byte [r15 + Letdef.defined], 0
+  mov rax, 0
+.done:
+  ret
+
+_if:
+  mov r15, rdi
+  mov byte [r15 + If.if_kind], IFK_THEN
+  lea rdi, [r15 + If.cond]
+  push r15
+  call _expr
+  pop r15
+  carry_error .done
+
+  lea rdi, [r15 + If.then]
+  push r15
+  call _block
+  pop r15
+  carry_error .done
+
+.m_elif:
+  expect TK_ELIF, .m_else
+  next
+  mov byte [r15 + If.if_kind], IFK_ELIF
+
+  callf malloc, If_size
+  mov qword [r15 + If.else], rax
+  push r15
+  mov rdi, rax
+  call _if
+  pop r15
+  carry_error .done
+  jmp .success
+
+.m_else:
+  expect TK_ELSE, .success
+  next
+
+  mov byte [r15 + If.if_kind], IFK_ELSE
+  lea rdi, [r15 + If.else]
+  push r15
+  call _block
+  pop r15
+  carry_error .done
+
+.success:
+  mov rax, 0
 .done:
   ret
 
@@ -490,7 +753,7 @@ _unterm:
   je .make_un
   cmp al, '~'
   jne .try_binterm
-  
+
 .make_un:
   mov byte [r15 + UnaryExpr.kind], UNARY_EXPR
   mov byte [r15 + UnaryExpr.operator], al
@@ -500,10 +763,15 @@ _unterm:
   mov qword [r15 + UnaryExpr.operand], rax
   mov rdi, rax
 
+  call _expr
+  carry_error .done
+  jmp .skip_try_binterm
+
 .try_binterm:
   call _binterm
   carry_error .done
 
+.skip_try_binterm:
   load_tok
   cmp al, ';'
   jne .success
@@ -521,7 +789,7 @@ _binterm:
   pop rdi
   mov r15, rdi
   carry_error .done
-  
+
   ; Test binop
   ; '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^' | '==' | '!='
   ; '<' | '>' | '<=' | '>='
@@ -614,7 +882,7 @@ _aterm:
   mov rcx, EXPR_MAX_SIZE
   rep movsb
 
-  mov qword [r15 + FieldExpr.kind], FIELD_EXPR
+  mov byte [r15 + FieldExpr.kind], FIELD_EXPR
   mov [r15 + FieldExpr.subject], rdx
   name_from_token r15 + FieldExpr.field
   next
@@ -647,15 +915,15 @@ _aterm:
   lea rdi, [r15 + CallExpr.args]
   mov rsi, EXPR_MAX_SIZE
   call Vec_grow
-  mov rdi, r15
+  mov rdi, rax
   push r15
   ; Allocate space for the sub-expression for the argument on the vector
-  ; If the call fails, set the size of the vector back to what it was before 
-  ; the allocation. 
+  ; If the call fails, set the size of the vector back to what it was before
+  ; the allocation.
   call _expr
   pop r15
   carry_error .deallocate_expr
-  
+
   expect ',', .try_closing
   next
 
@@ -738,8 +1006,8 @@ _lit:
 .try_char:
   expect TK_CHAR, .expected_literal
   mov byte [r15 + CharExpr.kind], CHR_EXPR
-  lea rax, [r14 + r12 + 1]
-  mov [r15 + CharExpr.value], rax
+  mov al, [r14 + r12 + 1]
+  mov [r15 + CharExpr.value], al
 
 .success:
   next
@@ -771,3 +1039,25 @@ str_const ERR_EXPECTED_ARGUMENT, "Expected function argument."
 str_const ERR_EXPECTED_OBRACE, "Expected '{'."
 str_const ERR_EXPECTED_CBRACE, "Expected '}'."
 str_const ERR_EXPECTED_ARG_OR_END, "Expected another argument or ')'."
+
+; Keyword table
+str_const KWS_FN,     "fn"
+str_const KWS_TYPE,   "type"
+str_const KWS_LET,    "let"
+str_const KWS_IF,     "if"
+str_const KWS_ELIF,   "elif"
+str_const KWS_ELSE,   "else"
+str_const KWS_RETURN, "return"
+
+str_const TKS_EOF, "<eof>"
+str_const MSG_SQT, "'"
+str_const MSG_DQT, `"`
+
+KEYWORD_NAME_TABLE:
+  dq KWS_FN
+  dq KWS_TYPE
+  dq KWS_LET
+  dq KWS_IF
+  dq KWS_ELIF
+  dq KWS_ELSE
+  dq KWS_RETURN

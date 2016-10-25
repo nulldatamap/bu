@@ -6,17 +6,19 @@ fun     := 'fn' IDENT '(' itseq? ')' ty block
 itseq   := IDENT ty (',' IDENT ty)*
 ty      := '*'* IDENT
 block   := '{' stmt* '}'
-stmt    := if | def | ret | expr
+stmt    := if | def | asgn | ret | expr
 if      := 'if' ifbody
 ifbody  := expr block elif? else?
 elif    := 'elif' ifbody
 else    := 'else' block
-def     := 'let' IDENT ty '=' expr
+def     := 'let' IDENT ty ('=' expr)?
+asgn    := expr '=' expr
 ret     := 'return' expr
 expr    := unop? binterm ';'?
 unop    := '-' | '*' | '&' | '!' | '~'
 binterm := aterm  (binop aterm)*
-binop   := '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^' | '==' | '!=' | '<' | '>' | '<=' | '>='
+binop   := '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^'
+         | '==' | '!=' | '<' | '>' | '<=' | '>='
 aterm   := term ( '.' IDENT | '(' exprseq? ')' )*
 exprseq := expr ( ',' expr )*
 term    := '(' expr ')' | lit | IDENT

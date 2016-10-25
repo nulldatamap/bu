@@ -52,6 +52,38 @@ MEMORY_BLOCK_HEADER_SIZE equ 8
 ; a header + 8 bytes
 MEMORY_BLOCK_MIN_SIZE    equ 16
 
+%ifdef VALGRIND
+extern MK_POOL, ALLOC, FREE, TRIM
+%endif
+
+%macro MARK_AS_ALLOCATED 0
+%ifdef VALGRIND
+push rax
+callf ALLOC, rax, r10
+pop rax
+%endif
+%endmacro
+
+%macro MARK_AS_FREED 0
+%ifdef VALGRIND
+; rdi, is already set to the address
+call FREE
+%endif
+%endmacro
+
+%macro MARK_IS_TRIMMED 0
+; %ifdef VALGRIND
+; push rbx
+; push rcx
+; push r8
+; callf TRIM, rbx, r10
+; pop r8
+; pop rcx
+; pop rbx
+; %endif
+%endmacro
+
+
 ; init_alloc () int
 init_malloc:
   ; sys_brk
@@ -62,6 +94,13 @@ init_malloc:
   mov [addr_space_end], rax
   mov [lowest_free_addr], rax
   mov [addr_space_start], rax
+
+  %ifdef VALGRIND
+  push rax
+  callf MK_POOL, rax
+  pop rax
+  %endif
+
   ret
 
 ; malloc ( int size ) ptr
@@ -76,8 +115,9 @@ malloc:
   mov rbx, [lowest_free_addr]
   mov rax, [addr_space_end]
   cmp rax, rbx
-  je .alloc_at_end
-
+  ; used to be `je`
+  jmp .alloc_at_end
+  
   ; Check if the lowest free address block has enough space
   mov rax, [rbx]
   xor rax, r8
@@ -107,7 +147,9 @@ malloc:
   xor rax, r8
   sub rax, r10
   cmp rax, MEMORY_BLOCK_MIN_SIZE
-  jb .takeover_entire_block
+  ; jb
+  jmp .takeover_entire_block
+  MARK_IS_TRIMMED
   ; If there's enough space left, we split the block by writing a new header
   ; at the end of the to-be allocation
   ; Set rcx the new new block's origin
@@ -153,6 +195,7 @@ malloc:
   ; Return the start of the address space beyond the header
   lea rax, [rbx + MEMORY_BLOCK_HEADER_SIZE]
   pop rbx
+  MARK_AS_ALLOCATED
   ret
   
 .alloc_at_end:
@@ -186,6 +229,7 @@ malloc:
   ; Return the start of the address space beyond the header
   lea rax, [rbx + MEMORY_BLOCK_HEADER_SIZE]
   pop rbx
+  MARK_AS_ALLOCATED
   ret
 
 .failed:
@@ -230,6 +274,7 @@ _search_for_free_block:
 
 ; free ( ptr addr ) int
 free:
+  MARK_AS_FREED
   ; Store the free flag mask
   mov r8, 1 << 63
   ; Get the header of the allocation
@@ -302,6 +347,95 @@ mem_stat:
   mov [allocated_bytes], rax
   ret
 
+block_dump:
+  ; Load the starting address
+  mov rsi, [addr_space_start]
+  mov r8, 1 << 63
+  mov rcx, [addr_space_end]
+
+.count_block:
+  ; Check if these bytes or free or not
+  mov rax, [rsi]
+  test rax, r8
+  jnz .count_free_bytes
+  push rax
+  push rsi
+  push r8
+  push r15
+  push rcx
+  mov r15, rax
+  mov rdi, BLOCK_DUMP
+  call print_err
+  mov rdi, r15
+  call print_int
+  pop rcx
+  pop r15
+  pop r8
+  pop rsi
+  pop rax
+  jmp .next_block
+
+.count_free_bytes:
+  xor rax, r8
+  push rax
+  push rsi
+  push r8
+  push r15
+  push rcx
+  mov r15, rax
+  mov rdi, BLOCK_DUMP_FREE
+  call print_err
+  mov rdi, r15
+  call print_int
+  pop rcx
+  pop r15
+  pop r8
+  pop rsi
+  pop rax
+
+.next_block:
+  ; Then get the next block's address
+  add rsi, rax
+  add rsi, MEMORY_BLOCK_HEADER_SIZE
+  ; Check if we've reached the end 
+  cmp rsi, rcx
+  je .finish
+  jmp .count_block
+
+.finish:
+  ret
+
+; Dumps all allocated memory blocks to STDOUT
+; _memdump () void
+_memdump:
+  blockstart
+  sub rsp, 0x8
+
+  mov rax, [addr_space_start]
+  mov [rbp - 0x8], rax
+  lea rdi, [rbp - 0x8]
+  mov rsi, 0x8
+  call stdout_write
+
+  mov rax, [addr_space_end]
+  mov [rbp - 0x8], rax
+  mov rdi, [rbp - 0x8]
+  mov rsi, 0x8
+  call stdout_write
+  
+  mov rdi, [addr_space_start]
+  mov rsi, [addr_space_end]
+  sub rsi, [addr_space_start]
+  call stdout_write
+
+  mov byte [rbp - 0x8], `\n`
+  lea rdi, [rbp - 0x8]
+  mov rsi, 1
+  call stdout_write
+
+  blockend
+  ret
+
 section .bss
 alignb 8
 
@@ -313,4 +447,6 @@ allocated_bytes  resb 8
 used_bytes       resb 8
 free_bytes       resb 8
 
-
+section .data
+str_const BLOCK_DUMP_FREE, "Free block: "
+str_const BLOCK_DUMP, "Block: "

@@ -198,6 +198,7 @@ Vec_push_all:
   push r13
   push r14
 
+  push rdx
   mov r12, rdi
   mov r13, rsi
   mov r14, [r12 + Vec.length]
@@ -207,7 +208,7 @@ Vec_push_all:
   call Vec_resize
 
   ; Copy over the contents
-  mov rcx, r14
+  pop rcx
   mov rsi, r13
   mov rdi, [r12 + Vec.data]
   add rdi, r14
