@@ -9,20 +9,28 @@ struc AST
   .fndefs    resb Vec_size
 endstruc
 
+TYDEF_ALIAS  equ 0
+TYDEF_STRUCT equ 1
+
 struc Typedef
   .name resb Vec_size
-  .type resb Type_size
+  .kind resb 1
+  .type resb TYPE_MAX_SIZE
 endstruc
 
 NAMED_TYPE equ 0
 PTR_TYPE   equ 1
 
 struc Type
-  .kind resb 1
-  ; Union, if it's a pointer
-  ; .type resq 1
-  .name resb Vec_size
+  .pointer resq 1
+  .name    resb Vec_size
 endstruc
+
+struc Struct
+  .fields resb Vec_size
+endstruc
+
+TYPE_MAX_SIZE equ Type_size
 
 INT_EXPR   equ 0
 STR_EXPR   equ 1
@@ -429,15 +437,49 @@ _typedef:
   mov r15, rdi
   expect TK_IDENT, .expected_type_name
   name_from_token r15 + Typedef.name
-
   next
-  expect TK_EQUAL, .expected_eq
+  expect TK_EQUAL, .m_struct
   next
 
+  mov byte [r15 + Typedef.kind], TYDEF_ALIAS
   lea rdi, [r15 + Typedef.type]
   call _type
   carry_error .done
+  jmp .m_semi
 
+.m_struct:
+  expect '{', .expected_eq_or_obrace
+  next
+
+  mov byte [r15 + Typedef.kind], TYDEF_STRUCT
+  
+  lea rdi, [r15 + Typedef.type]
+  mov rsi, Vec_size + Type_size
+  call new_Vec
+
+.try_field:
+  expect TK_IDENT, .expected_field_name
+  
+  lea rdi, [r15 + Typedef.type]
+  mov rsi, Vec_size + Type_size
+  call Vec_grow
+  
+  push r15
+  push rax
+  mov r15, rax
+  name_from_token r15
+  next
+  pop r15
+
+  lea rdi, [r15 + Vec_size]
+  call _type
+  carry_error .done
+  pop r15
+  
+  expect '}', .try_field
+  next
+
+.m_semi:
   expect ';', .skip_semi
   next
 
@@ -445,9 +487,12 @@ _typedef:
   mov rax, 0
   jmp .done
 
-.expected_eq:
+.expected_field_name:
   mov rax, SYNTAX_ERROR
-  mov rdx, ERR_EXPECTED_EQ
+  mov rdx, ERR_EXPECTED_FIELD_NAME
+.expected_eq_or_obrace:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_EQ_OR_OBRACE
   jmp .done
 .expected_type_name:
   mov rax, SYNTAX_ERROR
@@ -458,29 +503,14 @@ _typedef:
 
 ; _type ( ty *Type ) (int, str)
 _type:
+  mov qword [rdi + Type.pointer], 0
 .m_aster:
   expect TK_ASTER, .ty_name
   next
-  ; Create a pointer type and read it's "pointing to" type
-  mov byte [rdi + Type.kind], PTR_TYPE
-
-  push rdi
-  mov rdi, Type_size
-  call malloc
-  pop rdi
-
-  mov [rdi + Type.name], rax
-  mov rdi, rax
-  ; Read the "pointing to" type of the pointer type
-  push r15
-  call _type
-  pop r15
-  carry_error
-  ret
-
+  inc qword [rdi + Type.pointer]
+  jmp .m_aster
 .ty_name:
   expect TK_IDENT, .expected_type_name
-  mov byte [rdi + Type.kind], NAMED_TYPE
   ; Copy the source code string into a string buffer for the type name
   push r15
   mov r15, rdi
@@ -1038,6 +1068,8 @@ str_const ERR_EXPECTED_FN_NAME, "Expected function name."
 str_const ERR_EXPECTED_ARGUMENT, "Expected function argument."
 str_const ERR_EXPECTED_OBRACE, "Expected '{'."
 str_const ERR_EXPECTED_CBRACE, "Expected '}'."
+str_const ERR_EXPECTED_EQ_OR_OBRACE, "Expected '=' or '{'."
+str_const ERR_EXPECTED_FIELD_NAME, "Expected field name or '}'."
 str_const ERR_EXPECTED_ARG_OR_END, "Expected another argument or ')'."
 
 ; Keyword table

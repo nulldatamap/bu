@@ -1,7 +1,7 @@
 Grammar elements:
 
 program := (tydef | def | fun)*
-tydef   := 'type' IDENT '=' ty
+tydef   := 'type' IDENT (('=' ty) | ('{' (IDENT ty ';'?)+ '}'))
 fun     := 'fn' IDENT '(' itseq? ')' ty block
 itseq   := IDENT ty (',' IDENT ty)*
 ty      := '*'* IDENT
