@@ -19,8 +19,9 @@ unop    := '-' | '*' | '&' | '!' | '~'
 binterm := aterm  (binop aterm)*
 binop   := '+' | '-' | '*' | '/' | '%' | '&&' | '||' | '&' | '|' | '^'
          | '==' | '!=' | '<' | '>' | '<=' | '>='
-aterm   := term ( '.' IDENT | '(' exprseq? ')' )*
+aterm   := castterm ( '.' IDENT | '(' exprseq? ')' )*
 exprseq := expr ( ',' expr )*
+castterm:= term ('as' ty)
 term    := '(' expr ')' | lit | IDENT
 lit     := STRING | CHAR | NUMBER
 

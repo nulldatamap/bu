@@ -40,6 +40,7 @@ FIELD_EXPR equ 4
 CALL_EXPR  equ 5
 BIN_EXPR   equ 6
 UNARY_EXPR equ 7
+CAST_EXPR  equ 8
 
 struc UnaryExpr
   .kind     resb 1
@@ -86,7 +87,13 @@ struc IntExpr
   .value resq 1
 endstruc
 
-EXPR_MAX_SIZE equ CallExpr_size
+struc CastExpr
+  .kind    resb 1
+  .subject resq 1
+  .type    resb Type_size
+endstruc
+
+EXPR_MAX_SIZE equ CastExpr_size
 
 struc Letdef
   .name    resb Vec_size
@@ -297,7 +304,7 @@ display_tok:
 
   cmp al, TK_FN
   jb .as_symbol
-  cmp al, TK_RETURN
+  cmp al, TK_AS
   ja .as_symbol
   sub al, TK_FN
   mov rdi, [KEYWORD_NAME_TABLE + 8 * rax]
@@ -895,7 +902,7 @@ _binterm:
 
 _aterm:
   push rdi
-  call _term
+  call _castterm
   pop r15
   carry_error .done
 
@@ -981,6 +988,34 @@ _aterm:
   mov rax, SYNTAX_ERROR
   mov rdx, ERR_EXPECTED_CPAREN
 
+.done:
+  ret
+
+_castterm:
+  push r15
+  call _term
+  pop r15
+  carry_error .done
+
+  expect TK_AS, .success
+  next
+
+  mov rdi, EXPR_MAX_SIZE
+  call malloc
+  mov rdx, rax
+  mov rdi, rax
+  mov rsi, r15
+  mov rcx, EXPR_MAX_SIZE
+  rep movsb
+
+  mov byte [r15 + CastExpr.kind], CAST_EXPR
+  mov qword [r15 + CastExpr.subject], rdx
+  lea rdi, [r15 + CastExpr.type]
+  call _type
+  carry_error .done
+
+.success:
+  mov rax, 0
 .done:
   ret
 
@@ -1080,6 +1115,7 @@ str_const KWS_IF,     "if"
 str_const KWS_ELIF,   "elif"
 str_const KWS_ELSE,   "else"
 str_const KWS_RETURN, "return"
+str_const KWS_AS,     "as"
 
 str_const TKS_EOF, "<eof>"
 str_const MSG_SQT, "'"
@@ -1093,3 +1129,4 @@ KEYWORD_NAME_TABLE:
   dq KWS_ELIF
   dq KWS_ELSE
   dq KWS_RETURN
+  dq KWS_AS

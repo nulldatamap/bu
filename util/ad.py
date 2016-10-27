@@ -12,12 +12,14 @@ class Heap:
         self.ram = ram
     
     def load( self, addr, readable ):
+        print( ":=  " + hex( addr ) + " / " + hex( addr-self.base_addr ) )
         if addr > self.base_addr + len( self.ram ):
             raise RuntimeError( "Address out of bounds: " + hex( addr ) )
         # print( "Load: 0x{:x} -> 0x{:x}:{}".format( addr, addr-self.base_addr, readable.size ) )
         return readable.read( self.ram[addr-self.base_addr:], self )
     
     def get_data( self, addr, length ):
+        print( ".=  " + hex( addr ) + " / " + hex( addr-self.base_addr ) )
         if addr > self.base_addr + len( self.ram ):
             raise RuntimeError( "Address out of bounds: " + hex( addr ) )
         # print( "DLoad: 0x{:x} -> 0x{:x}:{}".format( addr, addr-self.base_addr, length ) )
@@ -64,6 +66,7 @@ class VecString:
 
     @classmethod
     def read( cls, data, heap ):
+        print( "VecString@" + hex( heap.ram.find( data[:cls.size] ) ) )
         (datptr, le, ca) = struct.unpack( "QQQ", data[:cls.size] )
         r = heap.get_data( datptr, le )
         return r
@@ -82,35 +85,63 @@ class Qword:
 
 class Ty:
     def __init__( self, ptr, tyn ):
-        self.ty = tyn if not ptr else "*" + str( tyn )
+        self.ty = ptr * "*" + tyn
     
-    size = 1 + Vec.size
+    size = 8 + Vec.size
     
     @classmethod
     def read( cls, data, heap ):
-        (ptr,) = struct.unpack( "B", data[0] )
-        ptr = ptr != 0
-        if ptr:
-            (tyaddr,) = struct.unpack( "Q", data[1:9] )
-            return Ty( True, heap.load( tyaddr, Ty ) )
-        else:
-            return Ty( False, VecString.read( data[1:25], heap ) )
+        print( "Ty@" + hex( heap.ram.find( data[:cls.size] ) ) )
+        (ptr,) = struct.unpack( "Q", data[:8] )
+        return Ty( ptr, VecString.read( data[8:], heap ) )
 
     def __str__( self ):
         return self.ty
 
-class Typedef:
-    def __init__( self, name, ty ):
-        self.name = name
-        self.ty = ty
-    
+class NameTy:
     size = VecString.size + Ty.size
+    @classmethod
+    def read( cls, data, heap ):
+        nm = VecString.read( data, heap )
+        ty = Ty.read( data[VecString.size:], heap )
+        return (nm, ty)
+
+class Struct:
+    def __init__( self, fields ):
+        self.fields = fields
+    
+    size = Vec.size
 
     @classmethod
     def read( cls, data, heap ):
+        return Struct( Vec.read( data, heap )( NameTy ) )
+    
+    def __repr__( self ):
+        return """{{
+{}
+}}""".format( "\n    ".join( map( lambda (nm, ty): nm + " " + str( ty ), self.fields.data ) ) )
+
+TYDEF_ALIAS  = 0
+TYDEF_STRUCT = 1
+
+class Typedef:
+    def __init__( self, name, tykind, ty ):
+        self.name = name
+        self.ty = ty
+    
+    size = VecString.size + 1 + Ty.size
+
+    @classmethod
+    def read( cls, data, heap ):
+        print( "Typedef@" + hex( heap.ram.find( data[:cls.size] ) ) )
         n = VecString.read( data, heap )
-        t = Ty.read( data[VecString.size:], heap )
-        return Typedef( n, t )
+        (kind,) = struct.unpack( "B", data[VecString.size:][:1] )
+        
+        if kind == TYDEF_ALIAS:
+            t = Ty.read( data[VecString.size + 1:], heap )
+        else:
+            t = Struct.read( data[VecString.size + 1:], heap )
+        return Typedef( n, kind, t )
     
     def __repr__( self ):
         return "type {} = {}".format( self.name, self.ty )
@@ -123,12 +154,13 @@ FieldExpr = 4
 CallExpr = 5
 BinExpr = 6
 UnaryExpr = 7
+CastExpr = 8
 
 class Expr:
     def __init__( self, kind ):
         self.kind = kind
     
-    size = 1 + 8 + Vec.size
+    size = 1 + 8 + Ty.size
 
     @classmethod
     def read( cls, data, heap ):
@@ -157,6 +189,10 @@ class Expr:
             expr.operator = data[1]
             (oper,) = struct.unpack( "Q", data[2:10] )
             expr.operand = heap.load( oper, Expr )
+        elif kind == CastExpr:
+            (subj,) = struct.unpack( "Q", data[1:9] )
+            expr.subject = heap.load( subj, Expr )
+            expr.type = Ty.read( data[9:], heap )
         else:
             raise RuntimeError( "Invalid expression kind: " + str( kind ) )
         
@@ -185,6 +221,8 @@ class Expr:
             return self.left.__repr__() + " " + self.oper_str() + " " + rhs
         elif kind == UnaryExpr:
             return self.operator + self.operand.__repr__()
+        elif kind == CastExpr:
+            return self.subject.__repr__() + " as " + str( self.type )
 
 class Letdef:
     def __init__( self, name, ty, value ):
@@ -192,7 +230,7 @@ class Letdef:
         self.ty = ty
         self.value = value
     
-    size = 83
+    size = VecString.size + Ty.size + 1 + Expr.size
 
     @classmethod
     def read( cls, data, heap ):
@@ -300,14 +338,6 @@ class Fndef:
     def read( cls, data, heap ):
         nm = VecString.read( data, heap )
 
-        class NameTy:
-            size = VecString.size + Ty.size
-            @classmethod
-            def read( cls, data, heap ):
-                nm = VecString.read( data, heap )
-                ty = Ty.read( data[VecString.size:], heap )
-                return (nm, ty)
-        
         args = Vec.read( data[VecString.size:], heap )( NameTy )
         rty = Ty.read( data[Vec.size * 2:], heap )
         body = Vec.read( data[Vec.size * 2 + Ty.size:], heap )( Stmt )
@@ -333,6 +363,11 @@ class AST:
     @classmethod
     def read( cls, data, heap ):
         (e, em, et) = struct.unpack( "<BQQ", data[:17] )
+
+        if e != 0:
+            print "Warning: parsing failed, the AST might be broken"
+            raw_input()
+
         ts = Vec.read( data[17:17 + 24], heap )
         ls = Vec.read( data[17 + 24:17 + 48], heap )
         fs = Vec.read( data[17 + 48:17 + 48 + 24], heap )
