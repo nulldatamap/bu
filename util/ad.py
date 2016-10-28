@@ -12,14 +12,12 @@ class Heap:
         self.ram = ram
     
     def load( self, addr, readable ):
-        print( ":=  " + hex( addr ) + " / " + hex( addr-self.base_addr ) )
         if addr > self.base_addr + len( self.ram ):
             raise RuntimeError( "Address out of bounds: " + hex( addr ) )
         # print( "Load: 0x{:x} -> 0x{:x}:{}".format( addr, addr-self.base_addr, readable.size ) )
         return readable.read( self.ram[addr-self.base_addr:], self )
     
     def get_data( self, addr, length ):
-        print( ".=  " + hex( addr ) + " / " + hex( addr-self.base_addr ) )
         if addr > self.base_addr + len( self.ram ):
             raise RuntimeError( "Address out of bounds: " + hex( addr ) )
         # print( "DLoad: 0x{:x} -> 0x{:x}:{}".format( addr, addr-self.base_addr, length ) )
@@ -66,7 +64,7 @@ class VecString:
 
     @classmethod
     def read( cls, data, heap ):
-        print( "VecString@" + hex( heap.ram.find( data[:cls.size] ) ) )
+        # print( "VecString@" + hex( heap.ram.find( data[:cls.size] ) ) )
         (datptr, le, ca) = struct.unpack( "QQQ", data[:cls.size] )
         r = heap.get_data( datptr, le )
         return r
@@ -91,7 +89,7 @@ class Ty:
     
     @classmethod
     def read( cls, data, heap ):
-        print( "Ty@" + hex( heap.ram.find( data[:cls.size] ) ) )
+        # print( "Ty@" + hex( heap.ram.find( data[:cls.size] ) ) )
         (ptr,) = struct.unpack( "Q", data[:8] )
         return Ty( ptr, VecString.read( data[8:], heap ) )
 
@@ -133,7 +131,7 @@ class Typedef:
 
     @classmethod
     def read( cls, data, heap ):
-        print( "Typedef@" + hex( heap.ram.find( data[:cls.size] ) ) )
+        # print( "Typedef@" + hex( heap.ram.find( data[:cls.size] ) ) )
         n = VecString.read( data, heap )
         (kind,) = struct.unpack( "B", data[VecString.size:][:1] )
         
@@ -224,11 +222,16 @@ class Expr:
         elif kind == CastExpr:
             return self.subject.__repr__() + " as " + str( self.type )
 
+LetdefUndef = 0
+LetdefDef = 1
+LetdefConst = 2
+
 class Letdef:
-    def __init__( self, name, ty, value ):
+    def __init__( self, name, ty, value, const ):
         self.name = name
         self.ty = ty
         self.value = value
+        self.const = const
     
     size = VecString.size + Ty.size + 1 + Expr.size
 
@@ -238,12 +241,13 @@ class Letdef:
         t = Ty.read( data[VecString.size:], heap )
         (d,) = struct.unpack( "B", data[VecString.size + Ty.size][:1] )
         v = None
-        if d == 1:
+        if d != LetdefUndef:
             v = Expr.read( data[VecString.size + Ty.size + 1:], heap )
-        return Letdef( n, t, v )
+        return Letdef( n, t, v, d == LetdefConst )
     
     def __repr__( self ):
-        return "let {} {}{}".format( self.name, self.ty, "" if self.value == None else " = " + str( self.value ) )
+        cnst = "const" if self.const else ""
+        return "let {} {} {}{}".format( cnst, self.name, self.ty, "" if self.value == None else " = " + str( self.value ) )
 
 def print_stmts( stmts ):
     return ";\n    ".join( map( str, stmts.data ) )

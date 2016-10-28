@@ -22,13 +22,14 @@ TK_ELIF   equ 10
 TK_ELSE   equ 11
 TK_RETURN equ 12
 TK_AS     equ 13
+TK_CONST  equ 14
                                          ; Multi-char symbols
-TK_DEQUAL equ 14
-TK_NEQUAL equ 15
-TK_LESSEQ equ 16
-TK_GRETEQ equ 17
-TK_DAMP   equ 18
-TK_DVBAR  equ 19
+TK_DEQUAL equ 15
+TK_NEQUAL equ 16
+TK_LESSEQ equ 17
+TK_GRETEQ equ 18
+TK_DAMP   equ 19
+TK_DVBAR  equ 20
                                          ; Single-char symbols
 TK_OPAREN equ '('
 TK_CPAREN equ ')'
@@ -307,7 +308,10 @@ push_buffer:
   cmp_kw_else RETURN, .try_as_kw
 
 .try_as_kw:
-  cmp_kw_else AS, .dont_keyword_check
+  cmp_kw_else AS, .try_as_const
+
+.try_as_const:
+  cmp_kw_else CONST, .dont_keyword_check
 
 .dont_keyword_check:
   mov rcx, r14
@@ -518,6 +522,7 @@ str_const KW_ELSE  , "else"
 str_const KW_LET   , "let"
 str_const KW_RETURN, "return"
 str_const KW_AS    , "as"
+str_const KW_CONST , "const"
 
 section .bss
 VALUE_BUFFER resb 1024

@@ -7,6 +7,7 @@
 %include "vec.asm"
 %include "lex.asm"
 %include "parse.asm"
+%include "validate.asm"
 
 section .text
 
@@ -43,4 +44,4 @@ _start:
 
 section .bss
 section .data
-str_const MSG_GOT, "Got: "
+str_const MSG_GOT, `\nGot: `

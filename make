@@ -18,6 +18,7 @@ then
   rbx, rsp, rbp, r12, r13, r14, r15\\n\
 \\n\
 Scratch:\\n\
+       [        Arg 1 - 6       ]\n\
   rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11\\n"
   exit 0
 fi

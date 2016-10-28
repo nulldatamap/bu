@@ -95,6 +95,10 @@ endstruc
 
 EXPR_MAX_SIZE equ CastExpr_size
 
+LETDEF_UNDEF equ 0
+LETDEF_DEF   equ 1
+LETDEF_CONST equ 2
+
 struc Letdef
   .name    resb Vec_size
   .type    resb Type_size
@@ -304,7 +308,7 @@ display_tok:
 
   cmp al, TK_FN
   jb .as_symbol
-  cmp al, TK_AS
+  cmp al, TK_CONST
   ja .as_symbol
   sub al, TK_FN
   mov rdi, [KEYWORD_NAME_TABLE + 8 * rax]
@@ -700,7 +704,15 @@ _block:
 
 ; _letdef ( ld *Letdef ) (int, *str)
 _letdef:
+  push rbx
   mov r15, rdi
+  xor rbx, rbx
+  expect TK_CONST, .not_const
+  next
+  mov byte [r15 + Letdef.defined], LETDEF_CONST
+  mov rbx, 1
+
+.not_const:
   expect TK_IDENT, .expected_variable_name
   name_from_token r15 + Letdef.name
   next
@@ -710,7 +722,10 @@ _letdef:
   expect TK_EQUAL, .no_def
   next
 
-  mov byte [r15 + Letdef.defined], 1
+  test rbx, rbx
+  jnz .skip_set_def
+  mov byte [r15 + Letdef.defined], LETDEF_DEF
+.skip_set_def:
   lea rdi, [r15 + Letdef.value]
   push r15
   call _expr
@@ -724,9 +739,17 @@ _letdef:
   mov rdx, ERR_EXPECTED_VAR_NAME
   jmp .done
 .no_def:
-  mov byte [r15 + Letdef.defined], 0
+  test rbx, rbx
+  jnz .err_expected_eq
+  mov byte [r15 + Letdef.defined], LETDEF_UNDEF
+  
   mov rax, 0
+  jmp .done
+.err_expected_eq:
+  mov rax, SYNTAX_ERROR
+  mov rdx, ERR_EXPECTED_CONST_EQ
 .done:
+  pop rbx
   ret
 
 _if:
@@ -1106,6 +1129,7 @@ str_const ERR_EXPECTED_CBRACE, "Expected '}'."
 str_const ERR_EXPECTED_EQ_OR_OBRACE, "Expected '=' or '{'."
 str_const ERR_EXPECTED_FIELD_NAME, "Expected field name or '}'."
 str_const ERR_EXPECTED_ARG_OR_END, "Expected another argument or ')'."
+str_const ERR_EXPECTED_CONST_EQ, "Expected '=', constants must have a value."
 
 ; Keyword table
 str_const KWS_FN,     "fn"
@@ -1116,6 +1140,7 @@ str_const KWS_ELIF,   "elif"
 str_const KWS_ELSE,   "else"
 str_const KWS_RETURN, "return"
 str_const KWS_AS,     "as"
+str_const KWS_CONST,  "const"
 
 str_const TKS_EOF, "<eof>"
 str_const MSG_SQT, "'"
@@ -1130,3 +1155,4 @@ KEYWORD_NAME_TABLE:
   dq KWS_ELSE
   dq KWS_RETURN
   dq KWS_AS
+  dq KWS_CONST
